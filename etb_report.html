@@ -113,6 +113,17 @@ body { font-family: 'Montserrat', -apple-system, sans-serif; background: var(--b
 .final-panel h3 { font-size: 1.3rem; font-weight: 700; margin-bottom: 1rem; }
 .final-panel p { font-size: 0.9rem; opacity: 0.9; max-width: 700px; margin: 0 auto; }
 
+/* Risk factors */
+.risk-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+.risk-metric { background: white; border-radius: 10px; padding: 1.2rem; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.risk-metric .risk-val { font-size: 1.6rem; font-weight: 800; }
+.risk-metric .risk-label { font-size: 0.7rem; color: var(--gris-texto); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-top: 4px; }
+.risk-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.risk-table th { background: #1F2937; color: white; padding: 10px 12px; text-align: left; font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.risk-table td { padding: 10px 12px; border-bottom: 1px solid #F3F4F6; }
+.risk-alert { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 10px; padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+.risk-alert .risk-alert-label { font-size: 0.7rem; font-weight: 700; color: #DC2626; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.3rem; }
+
 /* Cluster profiles */
 .cluster-profile { background: white; border-radius: 12px; padding: 2rem; margin-bottom: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
 .cluster-header { display: flex; align-items: center; gap: 16px; margin-bottom: 1.5rem; }
@@ -144,7 +155,7 @@ body { font-family: 'Montserrat', -apple-system, sans-serif; background: var(--b
 
 /* Responsive */
 @media (max-width: 800px) {
-    .triad-grid, .dyad-grid, .stones-grid, .demo-grid, .cluster-body, .stone-layout, .conclusions-grid, .reco-grid { grid-template-columns: 1fr; }
+    .triad-grid, .dyad-grid, .stones-grid, .demo-grid, .cluster-body, .stone-layout, .conclusions-grid, .reco-grid, .risk-metrics { grid-template-columns: 1fr; }
     .hero { padding: 2rem 1.5rem; }
     .hero h1 { font-size: 1.5rem; }
     .dyad-cluster-label { width: 140px; }
@@ -168,7 +179,8 @@ body { font-family: 'Montserrat', -apple-system, sans-serif; background: var(--b
         <a href="#ch4"><span class="lang-es">Stones</span><span class="lang-en">Stones</span></a>
         <a href="#ch5"><span class="lang-es">Perfiles</span><span class="lang-en">Profiles</span></a>
         <a href="#ch6"><span class="lang-es">Demografía</span><span class="lang-en">Demographics</span></a>
-        <a href="#ch7"><span class="lang-es">Conclusiones</span><span class="lang-en">Conclusions</span></a>
+        <a href="#ch7"><span class="lang-es">Riesgo</span><span class="lang-en">Risk</span></a>
+        <a href="#ch8"><span class="lang-es">Conclusiones</span><span class="lang-en">Conclusions</span></a>
         <div class="lang-toggle">
             <button class="active" onclick="setLang('es')">ES</button>
             <button onclick="setLang('en')">EN</button>
@@ -1159,10 +1171,108 @@ Programas de pertenencia por la empresa, sentirnos orgullosos de trabajar en una
     </div>
 </section>
 
-<!-- Chapter 7: Conclusions & Recommendations -->
+<!-- Chapter 7: Risk Factors -->
 <section class="chapter" id="ch7">
     <div class="chapter-header">
         <div class="chapter-num">07</div>
+        <h2><span class="lang-es">Factores de Riesgo</span><span class="lang-en">Risk Factors</span></h2>
+    </div>
+    <p class="chapter-intro"><span class="lang-es">Esta sección identifica las combinaciones demográficas y señales narrativas que amplifican las percepciones más críticas. Un "factor de riesgo" no implica que el grupo sea problemático — significa que concentra una narrativa que requiere atención diferenciada.</span><span class="lang-en">This section identifies the demographic combinations and narrative signals that amplify the most critical perceptions. A "risk factor" does not imply the group is problematic — it means it concentrates a narrative requiring differentiated attention.</span></p>
+
+    <!-- Risk KPIs -->
+    <div class="risk-metrics">
+        <div class="risk-metric">
+            <div class="risk-val" style="color:var(--c1);">115</div>
+            <div class="risk-label"><span class="lang-es">Triple amenaza</span><span class="lang-en">Triple threat</span><br><span style="font-size:0.62rem;">C1 + D4>0.5 + D5>0.4</span></div>
+        </div>
+        <div class="risk-metric">
+            <div class="risk-val" style="color:#DC2626;">27%</div>
+            <div class="risk-label"><span class="lang-es">Reportan miedo</span><span class="lang-en">Report fear</span><br><span style="font-size:0.62rem;">D1 > 0.6</span></div>
+        </div>
+        <div class="risk-metric">
+            <div class="risk-val" style="color:#DC2626;">21%</div>
+            <div class="risk-label"><span class="lang-es">Cambio impuesto</span><span class="lang-en">Imposed change</span><br><span style="font-size:0.62rem;">D4 > 0.6</span></div>
+        </div>
+        <div class="risk-metric">
+            <div class="risk-val" style="color:#DC2626;">19%</div>
+            <div class="risk-label"><span class="lang-es">Pertenencia debilitada</span><span class="lang-en">Weakened belonging</span><br><span style="font-size:0.62rem;">D5 > 0.5</span></div>
+        </div>
+    </div>
+
+    <div class="risk-alert">
+        <div class="risk-alert-label"><span class="lang-es">ALERTA</span><span class="lang-en">ALERT</span></div>
+        <p><span class="lang-es"><strong>115 personas (11%)</strong> están en la zona de "triple amenaza": pertenecen al cluster Escéptico, perciben el cambio como impuesto, y sienten que su pertenencia se ha debilitado. Este grupo requiere intervención prioritaria — no para "convertirlos", sino para escucharlos. Son el termómetro real de la transformación.</span><span class="lang-en"><strong>115 people (11%)</strong> are in the "triple threat" zone: they belong to the Skeptic cluster, perceive change as imposed, and feel their belonging has weakened. This group requires priority intervention — not to "convert" them, but to listen to them. They are the real thermometer of transformation.</span></p>
+    </div>
+
+    <!-- Critical Thresholds Table -->
+    <h3 style="margin: 2rem 0 1rem;"><span class="lang-es">Umbrales Críticos por Díada</span><span class="lang-en">Critical Dyad Thresholds</span></h3>
+    <table class="risk-table">
+        <thead>
+            <tr>
+                <th><span class="lang-es">Díada</span><span class="lang-en">Dyad</span></th>
+                <th><span class="lang-es">Señal de riesgo</span><span class="lang-en">Risk signal</span></th>
+                <th style="text-align:center;"><span class="lang-es">Umbral</span><span class="lang-en">Threshold</span></th>
+                <th style="text-align:center;"><span class="lang-es">Total</span><span class="lang-en">Total</span></th>
+                <th style="text-align:center;color:#FCA5A5;">C1</th>
+                <th style="text-align:center;color:#FCD34D;">C2</th>
+                <th style="text-align:center;color:#6EE7B7;">C3</th>
+            </tr>
+        </thead>
+        <tbody>
+    <tr>
+        <td><strong>D1</strong></td>
+        <td><span class="lang-es">Miedo al cambio</span><span class="lang-en">Fear of change</span></td>
+        <td style="text-align:center;">> 0.6</td>
+        <td style="text-align:center;"><strong>287</strong> (27%)</td>
+        <td style="text-align:center;background:rgba(239,68,68,0.30)"><strong>206</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">47%</span></td><td style="text-align:center;"><strong>67</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">18%</span></td><td style="text-align:center;"><strong>14</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">6%</span></td>
+    </tr>
+    <tr>
+        <td><strong>D4</strong></td>
+        <td><span class="lang-es">Cambio impuesto</span><span class="lang-en">Imposed change</span></td>
+        <td style="text-align:center;">> 0.6</td>
+        <td style="text-align:center;"><strong>219</strong> (21%)</td>
+        <td style="text-align:center;background:rgba(239,68,68,0.30)"><strong>175</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">40%</span></td><td style="text-align:center;"><strong>40</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">11%</span></td><td style="text-align:center;"><strong>4</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">2%</span></td>
+    </tr>
+    <tr>
+        <td><strong>D5</strong></td>
+        <td><span class="lang-es">Pertenencia debilitada</span><span class="lang-en">Weakened belonging</span></td>
+        <td style="text-align:center;">> 0.5</td>
+        <td style="text-align:center;"><strong>198</strong> (19%)</td>
+        <td style="text-align:center;background:rgba(239,68,68,0.30)"><strong>170</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">39%</span></td><td style="text-align:center;"><strong>26</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">7%</span></td><td style="text-align:center;"><strong>2</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">1%</span></td>
+    </tr>
+    <tr>
+        <td><strong>D6</strong></td>
+        <td><span class="lang-es">Desconexión</span><span class="lang-en">Disconnection</span></td>
+        <td style="text-align:center;">> 0.6</td>
+        <td style="text-align:center;"><strong>297</strong> (28%)</td>
+        <td style="text-align:center;background:rgba(239,68,68,0.30)"><strong>241</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">56%</span></td><td style="text-align:center;"><strong>49</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">13%</span></td><td style="text-align:center;"><strong>7</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">3%</span></td>
+    </tr></tbody>
+    </table>
+
+    <div class="insight-box" style="margin-top:1.5rem;">
+        <div class="insight-label"><span class="lang-es">LECTURA CLAVE</span><span class="lang-en">KEY READING</span></div>
+        <p><span class="lang-es">La concentración de señales críticas en C1 es dramática: el <strong>55% de los Escépticos</strong> reportan desconexión (D6>0.6) vs. apenas el 3% de los Visionarios. Esta no es una diferencia estadística — es una fractura narrativa. En la misma organización, dos personas pueden vivir realidades completamente opuestas del mismo proceso de cambio.</span><span class="lang-en">The concentration of critical signals in C1 is dramatic: <strong>55% of Skeptics</strong> report disconnection (D6>0.6) vs. only 3% of Visionaries. This is not a statistical difference — it's a narrative fracture. In the same organization, two people can experience completely opposite realities of the same change process.</span></p>
+    </div>
+
+    <!-- Risk Multiplier Chart -->
+    <h3 style="margin: 2rem 0 1rem;"><span class="lang-es">Multiplicadores de Riesgo por Demografía</span><span class="lang-en">Risk Multipliers by Demographics</span></h3>
+    <p style="font-size:0.8rem;color:var(--gris-texto);margin-bottom:1rem;">
+        <span class="lang-es">Ratio de concentración de C1 vs. promedio global (41.4%). Valores positivos indican sobre-representación de Escépticos en ese segmento. Barras rojas = alto riesgo, amarillas = moderado, verdes = bajo riesgo.</span><span class="lang-en">C1 concentration ratio vs. global average (41.4%). Positive values indicate over-representation of Skeptics in that segment. Red bars = high risk, yellow = moderate, green = low risk.</span>
+    </p>
+    <div class="chart-container" style="background:white;border-radius:12px;padding:1rem;">
+        <div>                            <div id="risk_diverging" class="plotly-graph-div" style="height:644px; width:100%;"></div>            <script type="text/javascript">                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("risk_diverging")) {                    Plotly.newPlot(                        "risk_diverging",                        [{"hovertemplate":"Entre 11 y 15 a\u00f1os\u003cbr\u003en=74\u003cbr\u003eC1=31.1%\u003cbr\u003eRR=0.75\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#10B981"},"orientation":"h","showlegend":false,"x":[-0.24875451488354716],"y":["Entre 11 y 15 a\u00f1os (Antig\u00fcedad)"],"type":"bar"},{"hovertemplate":"Menos de 6 meses\u003cbr\u003en=28\u003cbr\u003eC1=32.1%\u003cbr\u003eRR=0.78\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#10B981"},"orientation":"h","showlegend":false,"x":[-0.22309084924292288],"y":["Menos de 6 meses (Antig\u00fcedad)"],"type":"bar"},{"hovertemplate":"Colvatel\u003cbr\u003en=73\u003cbr\u003eC1=34.2%\u003cbr\u003eRR=0.83\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#10B981"},"orientation":"h","showlegend":false,"x":[-0.17224291395745217],"y":["Colvatel (\u00c1rea)"],"type":"bar"},{"hovertemplate":"Administrativo\u003cbr\u003en=290\u003cbr\u003eC1=36.9%\u003cbr\u003eRR=0.89\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#10B981"},"orientation":"h","showlegend":false,"x":[-0.10819164150643568],"y":["Administrativo (Cargo \u002f Rol)"],"type":"bar"},{"hovertemplate":"Profesional\u003cbr\u003en=269\u003cbr\u003eC1=37.2%\u003cbr\u003eRR=0.90\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#10B981"},"orientation":"h","showlegend":false,"x":[-0.1014681445188701],"y":["Profesional (Nivel educativo)"],"type":"bar"},{"hovertemplate":"Mujer\u003cbr\u003en=299\u003cbr\u003eC1=38.1%\u003cbr\u003eRR=0.92\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#10B981"},"orientation":"h","showlegend":false,"x":[-0.07844890032828311],"y":["Mujer (G\u00e9nero)"],"type":"bar"},{"hovertemplate":"Estrat\u00e9gico\u003cbr\u003en=217\u003cbr\u003eC1=38.2%\u003cbr\u003eRR=0.92\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#10B981"},"orientation":"h","showlegend":false,"x":[-0.07550595680519867],"y":["Estrat\u00e9gico (Cargo \u002f Rol)"],"type":"bar"},{"hovertemplate":"Entre 16 y 20 a\u00f1os\u003cbr\u003en=50\u003cbr\u003eC1=40.0%\u003cbr\u003eRR=0.97\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#10B981"},"orientation":"h","showlegend":false,"x":[-0.033179723502304026],"y":["Entre 16 y 20 a\u00f1os (Antig\u00fcedad)"],"type":"bar"},{"hovertemplate":"Postgrado\u002fMaestr\u00eda\u003cbr\u003en=456\u003cbr\u003eC1=41.2%\u003cbr\u003eRR=1.00\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#10B981"},"orientation":"h","showlegend":false,"x":[-0.0034966448379011306],"y":["Postgrado\u002fMaestr\u00eda (Nivel educativo)"],"type":"bar"},{"hovertemplate":"Entre 26 y 30 a\u00f1os\u003cbr\u003en=435\u003cbr\u003eC1=41.6%\u003cbr\u003eRR=1.01\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#F59E0B"},"orientation":"h","showlegend":false,"x":[0.005715345092430768],"y":["Entre 26 y 30 a\u00f1os (Antig\u00fcedad)"],"type":"bar"},{"hovertemplate":"Entre 6 y 10 a\u00f1os\u003cbr\u003en=108\u003cbr\u003eC1=41.7%\u003cbr\u003eRR=1.01\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#F59E0B"},"orientation":"h","showlegend":false,"x":[0.0071044546851000145],"y":["Entre 6 y 10 a\u00f1os (Antig\u00fcedad)"],"type":"bar"},{"hovertemplate":"ETB\u003cbr\u003en=906\u003cbr\u003eC1=41.9%\u003cbr\u003eRR=1.01\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#F59E0B"},"orientation":"h","showlegend":false,"x":[0.013774020610166637],"y":["ETB (\u00c1rea)"],"type":"bar"},{"hovertemplate":"Hombre\u003cbr\u003en=731\u003cbr\u003eC1=42.1%\u003cbr\u003eRR=1.02\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#F59E0B"},"orientation":"h","showlegend":false,"x":[0.01840165923833892],"y":["Hombre (G\u00e9nero)"],"type":"bar"},{"hovertemplate":"Entre 1 y 2 a\u00f1os\u003cbr\u003en=52\u003cbr\u003eC1=42.3%\u003cbr\u003eRR=1.02\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#F59E0B"},"orientation":"h","showlegend":false,"x":[0.022598369372562876],"y":["Entre 1 y 2 a\u00f1os (Antig\u00fcedad)"],"type":"bar"},{"hovertemplate":"Entre 21 y 25 a\u00f1os\u003cbr\u003en=66\u003cbr\u003eC1=42.4%\u003cbr\u003eRR=1.03\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#F59E0B"},"orientation":"h","showlegend":false,"x":[0.025415444770283457],"y":["Entre 21 y 25 a\u00f1os (Antig\u00fcedad)"],"type":"bar"},{"hovertemplate":"Entre 3 y 5 a\u00f1os\u003cbr\u003en=118\u003cbr\u003eC1=44.1%\u003cbr\u003eRR=1.07\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#F59E0B"},"orientation":"h","showlegend":false,"x":[0.06514098258220735],"y":["Entre 3 y 5 a\u00f1os (Antig\u00fcedad)"],"type":"bar"},{"hovertemplate":"Skynet\u003cbr\u003en=52\u003cbr\u003eC1=44.2%\u003cbr\u003eRR=1.07\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#F59E0B"},"orientation":"h","showlegend":false,"x":[0.06908011343495213],"y":["Skynet (\u00c1rea)"],"type":"bar"},{"hovertemplate":"Operativo\u003cbr\u003en=500\u003cbr\u003eC1=44.4%\u003cbr\u003eRR=1.07\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#F59E0B"},"orientation":"h","showlegend":false,"x":[0.07317050691244242],"y":["Operativo (Cargo \u002f Rol)"],"type":"bar"},{"hovertemplate":"Prefiero no decir\u003cbr\u003en=66\u003cbr\u003eC1=45.5%\u003cbr\u003eRR=1.10\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#F59E0B"},"orientation":"h","showlegend":false,"x":[0.0986594051110179],"y":["Prefiero no decir (Nivel educativo)"],"type":"bar"},{"hovertemplate":"T\u00e9cnico\u002ftecn\u00f3logo\u003cbr\u003en=227\u003cbr\u003eC1=46.3%\u003cbr\u003eRR=1.12\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#EF4444"},"orientation":"h","showlegend":false,"x":[0.1180190422054852],"y":["T\u00e9cnico\u002ftecn\u00f3logo (Nivel educativo)"],"type":"bar"},{"hovertemplate":"M\u00e1s de 30 a\u00f1os\u003cbr\u003en=95\u003cbr\u003eC1=50.5%\u003cbr\u003eRR=1.22\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#EF4444"},"orientation":"h","showlegend":false,"x":[0.22124666504972113],"y":["M\u00e1s de 30 a\u00f1os (Antig\u00fcedad)"],"type":"bar"},{"hovertemplate":"Prefiero no decir\u003cbr\u003en=31\u003cbr\u003eC1=51.6%\u003cbr\u003eRR=1.25\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#EF4444"},"orientation":"h","showlegend":false,"x":[0.24751003419057538],"y":["Prefiero no decir (Cargo \u002f Rol)"],"type":"bar"}],                        {"template":{"data":{"histogram2dcontour":[{"type":"histogram2dcontour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"choropleth":[{"type":"choropleth","colorbar":{"outlinewidth":0,"ticks":""}}],"histogram2d":[{"type":"histogram2d","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"heatmap":[{"type":"heatmap","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"contourcarpet":[{"type":"contourcarpet","colorbar":{"outlinewidth":0,"ticks":""}}],"contour":[{"type":"contour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"surface":[{"type":"surface","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"mesh3d":[{"type":"mesh3d","colorbar":{"outlinewidth":0,"ticks":""}}],"scatter":[{"fillpattern":{"fillmode":"overlay","size":10,"solidity":0.2},"type":"scatter"}],"parcoords":[{"type":"parcoords","line":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolargl":[{"type":"scatterpolargl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"bar":[{"error_x":{"color":"#2a3f5f"},"error_y":{"color":"#2a3f5f"},"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"scattergeo":[{"type":"scattergeo","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolar":[{"type":"scatterpolar","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"scattergl":[{"type":"scattergl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatter3d":[{"type":"scatter3d","line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermap":[{"type":"scattermap","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermapbox":[{"type":"scattermapbox","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterternary":[{"type":"scatterternary","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattercarpet":[{"type":"scattercarpet","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"carpet":[{"aaxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"baxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"type":"carpet"}],"table":[{"cells":{"fill":{"color":"#EBF0F8"},"line":{"color":"white"}},"header":{"fill":{"color":"#C8D4E3"},"line":{"color":"white"}},"type":"table"}],"barpolar":[{"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"pie":[{"automargin":true,"type":"pie"}]},"layout":{"autotypenumbers":"strict","colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#2a3f5f"},"hovermode":"closest","hoverlabel":{"align":"left"},"paper_bgcolor":"white","plot_bgcolor":"#E5ECF6","polar":{"bgcolor":"#E5ECF6","angularaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"radialaxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"ternary":{"bgcolor":"#E5ECF6","aaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"baxis":{"gridcolor":"white","linecolor":"white","ticks":""},"caxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]]},"xaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"yaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"scene":{"xaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"yaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"zaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2}},"shapedefaults":{"line":{"color":"#2a3f5f"}},"annotationdefaults":{"arrowcolor":"#2a3f5f","arrowhead":0,"arrowwidth":1},"geo":{"bgcolor":"white","landcolor":"#E5ECF6","subunitcolor":"white","showland":true,"showlakes":true,"lakecolor":"white"},"title":{"x":0.05},"mapbox":{"style":"light"}}},"xaxis":{"title":{"text":"\u003cspan class=\"lang-es\"\u003eRatio de riesgo (vs. promedio)\u003c\u002fspan\u003e\u003cspan class=\"lang-en\"\u003eRisk ratio (vs. average)\u003c\u002fspan\u003e"},"zeroline":true,"zerolinecolor":"#374151","zerolinewidth":2,"tickformat":"+.0%","range":[-0.45,0.45]},"yaxis":{"autorange":true},"margin":{"l":220,"r":30,"t":20,"b":50},"font":{"family":"Montserrat","size":10},"height":644,"paper_bgcolor":"rgba(0,0,0,0)","plot_bgcolor":"rgba(249,250,251,1)"},                        {"responsive": true}                    )                };            </script>        </div>
+    </div>
+
+    <div class="insight-box" style="margin-top:1.5rem;">
+        <div class="insight-label"><span class="lang-es">HALLAZGO CLAVE</span><span class="lang-en">KEY FINDING</span></div>
+        <p><span class="lang-es">Los colaboradores con <strong>más de 30 años de antigüedad</strong> tienen un 22% más de probabilidad de ser Escépticos que el promedio, y reportan los niveles más altos de miedo al cambio (D1=0.46). Paradójicamente, el grupo <strong>entre 11 y 15 años</strong> tiene la menor concentración de C1 (31%) — no son los más nuevos los más optimistas, sino los de carrera media. El cargo <strong>operativo</strong> también amplifica el riesgo (+7% sobre promedio).</span><span class="lang-en">Employees with <strong>over 30 years of seniority</strong> have a 22% higher probability of being Skeptics than average, and report the highest levels of fear of change (D1=0.46). Paradoxically, the <strong>11-15 year</strong> group has the lowest C1 concentration (31%) — the most optimistic are not the newest, but mid-career employees. <strong>Operational</strong> roles also amplify risk (+7% above average).</span></p>
+    </div>
+</section>
+
+<!-- Chapter 8: Conclusions & Recommendations -->
+<section class="chapter" id="ch8">
+    <div class="chapter-header">
+        <div class="chapter-num">08</div>
         <h2><span class="lang-es">Conclusiones y Recomendaciones</span><span class="lang-en">Conclusions & Recommendations</span></h2>
     </div>
 
