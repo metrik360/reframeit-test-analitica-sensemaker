@@ -46,6 +46,154 @@ text_df['cluster'] = assignments['cluster'].values
 N = len(triads)
 print(f"  N = {N} respondents, 3 clusters")
 
+# ── Data Infrastructure (for client-side filtering & year comparison) ────
+
+DEMO_FIELDS = ['cargo', 'antiguedad', 'area', 'genero', 'educacion']
+TRIAD_IDS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9"]
+DYAD_IDS = ["D1", "D2", "D3", "D4", "D5", "D6"]
+S1_COLS = [
+    ("S1_ser_yo_mismo_X", "S1_ser_yo_mismo_Y"),
+    ("S1_aceptar_errores_X", "S1_aceptar_errores_Y"),
+    ("S1_pedir_ayuda_X", "S1_pedir_ayuda_Y"),
+    ("S1_confianza_X", "S1_confianza_Y"),
+    ("S1_empatia_X", "S1_empatia_Y"),
+    ("S1_simplicidad_X", "S1_simplicidad_Y"),
+    ("S1_adaptabilidad_X", "S1_adaptabilidad_Y"),
+    ("S1_curiosidad_X", "S1_curiosidad_Y"),
+]
+S2_COLS = [
+    ("S2_mi_experiencia_X", "S2_mi_experiencia_Y"),
+    ("S2_percepcion_mercado_X", "S2_percepcion_mercado_Y"),
+    ("S2_como_nos_vendemos_X", "S2_como_nos_vendemos_Y"),
+    ("S2_como_quisiera_X", "S2_como_quisiera_Y"),
+]
+
+def build_embedded_data(triads_df, dyads_df, stones_df, cat_df, cluster_col):
+    """Export row-level data as compact integer arrays for client-side filtering."""
+    n = len(triads_df)
+    # Triad columns: 9 triads × 3 apexes = 27 cols
+    triad_cols = []
+    for tid in TRIAD_IDS:
+        triad_cols.extend([f"{tid}_a", f"{tid}_b", f"{tid}_c"])
+    # Dyad columns: 6
+    dyad_cols = DYAD_IDS
+    # Stone columns: S1 (8×2=16) + S2 (4×2=8) = 24
+    stone_cols = []
+    for xc, yc in S1_COLS + S2_COLS:
+        stone_cols.extend([xc, yc])
+
+    # Encode as int ×10000 for precision (4 decimals)
+    def to_int_array(df, cols):
+        result = []
+        for _, row in df.iterrows():
+            result.append([int(round(float(row[c]) * 10000)) for c in cols])
+        return result
+
+    triads_arr = to_int_array(triads_df, triad_cols)
+    dyads_arr = to_int_array(dyads_df, dyad_cols)
+    stones_arr = to_int_array(stones_df, stone_cols)
+
+    # Demographics: encode as integer indices
+    demo_maps = {}
+    demos_arr = []
+    for col in DEMO_FIELDS:
+        if col in cat_df.columns:
+            unique_vals = sorted(cat_df[col].dropna().unique().tolist())
+            demo_maps[col] = unique_vals
+        else:
+            demo_maps[col] = []
+
+    for _, row in cat_df.iterrows():
+        row_demos = []
+        for col in DEMO_FIELDS:
+            if col in cat_df.columns:
+                val = row[col]
+                try:
+                    idx = demo_maps[col].index(val)
+                except (ValueError, KeyError):
+                    idx = -1
+                row_demos.append(idx)
+            else:
+                row_demos.append(-1)
+        demos_arr.append(row_demos)
+
+    clusters = [int(cluster_col.iloc[i]) for i in range(n)]
+
+    return {
+        'n': n,
+        'triadCols': triad_cols,
+        'dyadCols': dyad_cols,
+        'stoneCols': stone_cols,
+        'demoFields': DEMO_FIELDS,
+        'demoMaps': demo_maps,
+        'cluster': clusters,
+        'triads': triads_arr,
+        'dyads': dyads_arr,
+        'stones': stones_arr,
+        'demos': demos_arr
+    }
+
+
+def generate_synthetic_2026(triads_df, dyads_df, stones_df, cat_df, cluster_col):
+    """Generate synthetic 2026 data with realistic moderate improvements."""
+    t26 = triads_df.copy()
+    d26 = dyads_df.copy()
+    s26 = stones_df.copy()
+    c26 = cat_df.copy()
+    cl26 = cluster_col.copy()
+
+    np.random.seed(2026)
+
+    # --- Cluster migration: ~5% of C1 → C2, ~5% of C2 → C3 ---
+    c1_mask = cl26 == 1
+    c1_indices = cl26[c1_mask].index.tolist()
+    migrate_c1_to_c2 = np.random.choice(c1_indices, size=min(52, len(c1_indices)), replace=False)
+    cl26.loc[migrate_c1_to_c2] = 2
+
+    c2_mask = cl26 == 2
+    c2_indices = cl26[c2_mask].index.tolist()
+    migrate_c2_to_c3 = np.random.choice(c2_indices, size=min(18, len(c2_indices)), replace=False)
+    cl26.loc[migrate_c2_to_c3] = 3
+
+    # --- Dyad shifts toward positive (lower values = more positive pole) ---
+    dyad_shifts = {'D1': -0.04, 'D4': -0.05, 'D5': -0.02, 'D6': -0.06}
+    for did, shift in dyad_shifts.items():
+        noise = np.random.normal(0, 0.02, len(d26))
+        d26[did] = (d26[did] + shift + noise).clip(0, 1)
+
+    # --- Stone improvements: "Ser yo mismo" X gets +0.08 ---
+    s26['S1_ser_yo_mismo_X'] = (s26['S1_ser_yo_mismo_X'] + 0.08 + np.random.normal(0, 0.02, len(s26))).clip(0, 1)
+    s26['S1_ser_yo_mismo_Y'] = (s26['S1_ser_yo_mismo_Y'] + 0.04 + np.random.normal(0, 0.02, len(s26))).clip(0, 1)
+    # General small improvement on other S1 items
+    for xc, yc in S1_COLS[1:]:
+        s26[xc] = (s26[xc] + 0.03 + np.random.normal(0, 0.015, len(s26))).clip(0, 1)
+        s26[yc] = (s26[yc] + 0.02 + np.random.normal(0, 0.015, len(s26))).clip(0, 1)
+
+    # --- Triad shifts: positive apex +0.03, others re-normalized ---
+    for tid in TRIAD_IDS:
+        a_col, b_col, c_col = f"{tid}_a", f"{tid}_b", f"{tid}_c"
+        t26[a_col] = t26[a_col] + 0.03 + np.random.normal(0, 0.01, len(t26))
+        t26[b_col] = t26[b_col] - 0.015 + np.random.normal(0, 0.01, len(t26))
+        t26[c_col] = t26[c_col] - 0.015 + np.random.normal(0, 0.01, len(t26))
+        # Re-normalize to sum=1
+        row_sums = t26[a_col] + t26[b_col] + t26[c_col]
+        row_sums = row_sums.replace(0, 1)
+        t26[a_col] = (t26[a_col] / row_sums).clip(0, 1)
+        t26[b_col] = (t26[b_col] / row_sums).clip(0, 1)
+        t26[c_col] = (t26[c_col] / row_sums).clip(0, 1)
+
+    return t26, d26, s26, c26, cl26
+
+
+print("[Report] Building embedded data for interactive filtering...")
+data_2025 = build_embedded_data(triads, dyads, stones, categorical, assignments['cluster'])
+
+t26, d26, s26, c26, cl26 = generate_synthetic_2026(triads, dyads, stones, categorical, assignments['cluster'])
+data_2026 = build_embedded_data(t26, d26, s26, c26, cl26)
+
+embedded_json = json.dumps({'2025': data_2025, '2026': data_2026}, separators=(',', ':'))
+print(f"  Embedded data size: {len(embedded_json) / 1024:.0f} KB")
+
 # ── Constants ────────────────────────────────────────────────────────────
 COLORS = {1: '#EF4444', 2: '#F59E0B', 3: '#10B981'}
 NAMES_ES = {
@@ -195,11 +343,14 @@ def make_demo_table(col_name, title_es, title_en):
     </div>"""
 
 def make_stone_scatter(stone_set, items, x_label_es, y_label_es, x_label_en, y_label_en,
-                       quadrant_labels=None, quadrant_colors=None):
+                       quadrant_labels=None, quadrant_colors=None,
+                       x_endpoints=None, y_endpoints=None):
     """Create a clean scatter plot for stone items per cluster using numbered markers.
 
     quadrant_labels: dict with keys 'bl','br','tl','tr' -> bilingual label strings
     quadrant_colors: dict with keys 'bl','br','tl','tr' -> rgba color strings
+    x_endpoints: tuple (label_at_0, label_at_1) for axis extreme annotations
+    y_endpoints: tuple (label_at_0, label_at_1) for axis extreme annotations
     """
     fig = go.Figure()
 
@@ -234,6 +385,26 @@ def make_stone_scatter(stone_set, items, x_label_es, y_label_es, x_label_en, y_l
                     font=dict(size=8.5, color='#9CA3AF', family='Montserrat'),
                     opacity=0.55
                 )
+
+    # Axis endpoint annotations (original questionnaire words)
+    if x_endpoints:
+        fig.add_annotation(x=0.04, y=-0.06, text=x_endpoints[0], showarrow=False,
+                          xanchor='left', yanchor='top',
+                          font=dict(size=7, color='#9CA3AF', family='Montserrat'),
+                          opacity=0.7, xref='x', yref='paper')
+        fig.add_annotation(x=0.96, y=-0.06, text=x_endpoints[1], showarrow=False,
+                          xanchor='right', yanchor='top',
+                          font=dict(size=7, color='#9CA3AF', family='Montserrat'),
+                          opacity=0.7, xref='x', yref='paper')
+    if y_endpoints:
+        fig.add_annotation(x=-0.06, y=0.04, text=y_endpoints[0], showarrow=False,
+                          yanchor='bottom', textangle=-90,
+                          font=dict(size=7, color='#9CA3AF', family='Montserrat'),
+                          opacity=0.7, xref='paper', yref='y')
+        fig.add_annotation(x=-0.06, y=0.96, text=y_endpoints[1], showarrow=False,
+                          yanchor='top', textangle=-90,
+                          font=dict(size=7, color='#9CA3AF', family='Montserrat'),
+                          opacity=0.7, xref='paper', yref='y')
 
     cluster_symbols = {1: 'circle', 2: 'square', 3: 'diamond'}
 
@@ -370,21 +541,25 @@ s1_items = [
     ("Curiosidad", "S1_curiosidad_X", "S1_curiosidad_Y"),
 ]
 s1_quadrant_labels = {
-    'bl': 'Bloqueado\nBlocked',
-    'br': 'Posible no vivido\nPossible not lived',
-    'tl': 'Vivido sin reconocer\nLived unrecognized',
-    'tr': 'Integrado\nIntegrated'
+    'bl': 'Integrado\nIntegrated',               # frecuente + fácil = zona saludable
+    'br': 'Posible no vivido\nPossible not lived', # raro + fácil = potencial sin activar
+    'tl': 'Vivido con esfuerzo\nLived with effort', # frecuente + difícil = tensión
+    'tr': 'Bloqueado\nBlocked'                     # raro + difícil = zona de riesgo
 }
 s1_quadrant_colors = {
-    'bl': "rgba(107,114,128,0.06)",   # gris — zona de riesgo
-    'br': "rgba(245,158,11,0.06)",    # ámbar — potencial sin activar
-    'tl': "rgba(59,130,246,0.05)",    # azul — informal/subterráneo
-    'tr': "rgba(16,185,129,0.06)"     # verde — zona saludable
+    'bl': "rgba(16,185,129,0.06)",   # verde — zona saludable
+    'br': "rgba(245,158,11,0.06)",   # ámbar — potencial sin activar
+    'tl': "rgba(59,130,246,0.05)",   # azul — tensión/esfuerzo
+    'tr': "rgba(107,114,128,0.06)"   # gris — zona de riesgo
 }
 s1_chart = make_stone_scatter("S1", s1_items,
-    "Posibilidad percibida", "Frecuencia vivida",
-    "Perceived possibility", "Lived frequency",
-    quadrant_labels=s1_quadrant_labels, quadrant_colors=s1_quadrant_colors)
+    "Pasa todo el tiempo ← Frecuencia → Es muy raro",
+    "Muy fácil ← Dificultad → Imposible",
+    "Happens all the time ← Frequency → Very rare",
+    "Very easy ← Difficulty → Impossible",
+    quadrant_labels=s1_quadrant_labels, quadrant_colors=s1_quadrant_colors,
+    x_endpoints=("Pasa todo el tiempo", "Es muy raro"),
+    y_endpoints=("Muy fácil", "Imposible"))
 s1_legend = make_stone_legend_table(s1_items)
 
 # S2: Brand & Identity (4 items)
@@ -395,21 +570,25 @@ s2_items = [
     ("Como quisiera", "S2_como_quisiera_X", "S2_como_quisiera_Y"),
 ]
 s2_quadrant_labels = {
-    'bl': 'Desconectado\nDisconnected',
-    'br': 'Conformista\nComplacent',
-    'tl': 'Brecha aspiracional\nAspirational gap',
-    'tr': 'Alineado\nAligned'
+    'bl': 'Alineado\nAligned',                # frecuente + fácil = coherente
+    'br': 'Aspiracional\nAspirational',        # raro + fácil = deseado no vivido
+    'tl': 'Brecha vivida\nLived gap',          # frecuente + difícil = tensión
+    'tr': 'Desconectado\nDisconnected'         # raro + difícil = sin alineación
 }
 s2_quadrant_colors = {
-    'bl': "rgba(107,114,128,0.06)",   # gris — desapego
-    'br': "rgba(245,158,11,0.06)",    # ámbar — statu quo
-    'tl': "rgba(239,68,68,0.05)",     # rojo suave — tensión
-    'tr': "rgba(16,185,129,0.06)"     # verde — coherencia
+    'bl': "rgba(16,185,129,0.06)",   # verde — coherencia
+    'br': "rgba(245,158,11,0.06)",   # ámbar — aspiración
+    'tl': "rgba(239,68,68,0.05)",    # rojo suave — tensión
+    'tr': "rgba(107,114,128,0.06)"   # gris — desapego
 }
 s2_chart = make_stone_scatter("S2", s2_items,
-    "Realidad interna", "Aspiración",
-    "Internal reality", "Aspiration",
-    quadrant_labels=s2_quadrant_labels, quadrant_colors=s2_quadrant_colors)
+    "Pasa todo el tiempo ← Frecuencia → Es muy raro",
+    "Muy fácil ← Dificultad → Imposible",
+    "Happens all the time ← Frequency → Very rare",
+    "Very easy ← Difficulty → Impossible",
+    quadrant_labels=s2_quadrant_labels, quadrant_colors=s2_quadrant_colors,
+    x_endpoints=("Pasa todo el tiempo", "Es muy raro"),
+    y_endpoints=("Muy fácil", "Imposible"))
 s2_legend = make_stone_legend_table(s2_items)
 
 print("[Report] Building cluster profiles...")
@@ -627,6 +806,38 @@ for ct_item in critical_thresholds:
         {cells}
     </tr>"""
 
+# ── Build Sidebar HTML ───────────────────────────────────────────────────
+print("[Report] Building filter sidebar...")
+demo_titles = {
+    'cargo': ('Cargo / Rol', 'Role / Position'),
+    'antiguedad': ('Antigüedad', 'Seniority'),
+    'area': ('Área', 'Department'),
+    'genero': ('Género', 'Gender'),
+    'educacion': ('Nivel educativo', 'Education level'),
+}
+sidebar_html = ""
+for field in DEMO_FIELDS:
+    if field not in categorical.columns:
+        continue
+    title_es, title_en = demo_titles.get(field, (field, field))
+    vc = categorical[field].value_counts()
+    opts = ""
+    for val in sorted(vc.index.tolist()):
+        count = int(vc[val])
+        safe_val = str(val).replace("'", "\\'").replace('"', '&quot;')
+        opts += f'''<label class="filter-option">
+            <input type="checkbox" checked data-field="{field}" data-value="{safe_val}">
+            <span>{val}</span>
+            <span class="fo-count" id="fc-{field}-{safe_val}">{count}</span>
+        </label>'''
+    sidebar_html += f'''<div class="filter-group" id="fg-{field}">
+        <div class="filter-group-header" onclick="toggleFilterGroup('{field}')">
+            <span>{bi(title_es, title_en)}</span>
+            <span class="fg-arrow">▼</span>
+        </div>
+        <div class="filter-options">{opts}</div>
+    </div>'''
+
 # ── Build HTML ───────────────────────────────────────────────────────────
 print("[Report] Assembling HTML...")
 
@@ -793,9 +1004,63 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
     .dyad-cluster-label {{ width: 140px; }}
 }}
 
+/* Filter Sidebar */
+.filter-sidebar {{ position: fixed; top: 56px; left: 0; bottom: 0; width: 300px; background: #FFFFFF; border-right: 1px solid var(--gris-linea); z-index: 999; transform: translateX(-100%); transition: transform 0.3s ease; overflow-y: auto; padding: 1.5rem 1rem; box-shadow: 4px 0 20px rgba(0,0,0,0.08); }}
+.filter-sidebar.open {{ transform: translateX(0); }}
+.filter-sidebar .filter-n {{ text-align: center; font-size: 0.8rem; color: var(--gris-texto); margin-bottom: 1rem; padding-bottom: 0.8rem; border-bottom: 1px solid var(--gris-linea); }}
+.filter-sidebar .filter-n strong {{ font-size: 1.4rem; color: var(--negro-carbon); display: block; }}
+.filter-group {{ margin-bottom: 1rem; }}
+.filter-group-header {{ display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 8px 10px; background: #F9FAFB; border-radius: 8px; font-size: 0.78rem; font-weight: 600; color: var(--negro-carbon); user-select: none; }}
+.filter-group-header:hover {{ background: #F3F4F6; }}
+.filter-group-header .fg-arrow {{ transition: transform 0.2s; font-size: 0.65rem; color: var(--gris-texto); }}
+.filter-group.collapsed .filter-options {{ display: none; }}
+.filter-group.collapsed .fg-arrow {{ transform: rotate(-90deg); }}
+.filter-options {{ padding: 6px 4px 0; }}
+.filter-option {{ display: flex; align-items: center; gap: 8px; padding: 4px 6px; font-size: 0.75rem; cursor: pointer; border-radius: 4px; }}
+.filter-option:hover {{ background: #F3F4F6; }}
+.filter-option input {{ accent-color: var(--verde-accent); cursor: pointer; }}
+.filter-option .fo-count {{ margin-left: auto; font-size: 0.65rem; color: #9CA3AF; background: #F3F4F6; padding: 1px 6px; border-radius: 10px; min-width: 24px; text-align: center; }}
+.filter-actions {{ display: flex; gap: 8px; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--gris-linea); }}
+.filter-actions button {{ flex: 1; padding: 8px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; font-family: 'Montserrat', sans-serif; }}
+.btn-apply {{ background: var(--verde-accent); color: white; }}
+.btn-apply:hover {{ background: #059669; }}
+.btn-clear {{ background: #F3F4F6; color: var(--gris-texto); }}
+.btn-clear:hover {{ background: #E5E7EB; }}
+
+/* Filter toggle button */
+.filter-btn {{ background: transparent; border: 1px solid #4B5563; color: #9CA3AF; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }}
+.filter-btn:hover {{ color: white; border-color: #9CA3AF; }}
+.filter-btn.active {{ background: var(--verde-accent); border-color: var(--verde-accent); color: white; }}
+.filter-badge {{ display: none; background: #EF4444; color: white; font-size: 0.55rem; font-weight: 700; padding: 1px 5px; border-radius: 10px; margin-left: 2px; }}
+
+/* Year Toggle */
+.year-toggle {{ display: flex; gap: 4px; }}
+.year-toggle button {{ background: transparent; border: 1px solid #4B5563; color: #9CA3AF; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; font-weight: 600; transition: all 0.2s; font-family: 'Montserrat', sans-serif; }}
+.year-toggle button.active {{ background: #3B82F6; border-color: #3B82F6; color: white; }}
+.year-toggle button:hover:not(.active) {{ border-color: #9CA3AF; color: white; }}
+
+/* Urgency Badges */
+.urgency {{ display: inline-flex; align-items: center; gap: 4px; font-size: 0.68rem; font-weight: 700; padding: 3px 10px; border-radius: 12px; letter-spacing: 0.3px; vertical-align: middle; }}
+.urgency-critical {{ background: #FEE2E2; color: #991B1B; }}
+.urgency-watch {{ background: #FEF3C7; color: #92400E; }}
+.urgency-ontrack {{ background: #D1FAE5; color: #065F46; }}
+
+/* Delta Indicators */
+.delta {{ font-size: 0.72rem; font-weight: 700; margin-left: 6px; }}
+.delta-up {{ color: #059669; }}
+.delta-down {{ color: #DC2626; }}
+.delta-neutral {{ color: #6B7280; }}
+.delta-container {{ display: none; }}
+body.show-deltas .delta-container {{ display: inline; }}
+
+/* Sidebar open state */
+body.sidebar-open .main-content {{ margin-left: 300px; transition: margin-left 0.3s ease; }}
+@media (max-width: 1000px) {{ body.sidebar-open .main-content {{ margin-left: 0; }} }}
+
 @media print {{
     .site-header {{ position: static; }}
     .chapter {{ page-break-inside: avoid; }}
+    .filter-sidebar {{ display: none !important; }}
 }}
 </style>
 </head>
@@ -805,6 +1070,7 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
 <header class="site-header">
     <div class="logo">{bi('MéTRIK <span>Analítica</span>', 'MéTRIK <span>Analytics</span>')}</div>
     <nav>
+        <button class="filter-btn" onclick="toggleSidebar()" title="Filtros demográficos">&#9776;<span class="filter-badge" id="filter-badge"></span></button>
         <a href="#ch1">{bi('Resumen', 'Summary')}</a>
         <a href="#ch2">{bi('Triadas', 'Triads')}</a>
         <a href="#ch3">{bi('Díadas', 'Dyads')}</a>
@@ -813,12 +1079,29 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
         <a href="#ch6">{bi('Demografía', 'Demographics')}</a>
         <a href="#ch7">{bi('Riesgo', 'Risk')}</a>
         <a href="#ch8">{bi('Conclusiones', 'Conclusions')}</a>
+        <div class="year-toggle">
+            <button class="active" onclick="setYear('2025')">2025</button>
+            <button onclick="setYear('2026')">2026</button>
+        </div>
         <div class="lang-toggle">
             <button class="active" onclick="setLang('es')">ES</button>
             <button onclick="setLang('en')">EN</button>
         </div>
     </nav>
 </header>
+
+<!-- Filter Sidebar -->
+<aside class="filter-sidebar" id="filterSidebar">
+    <div class="filter-n">
+        <strong id="hero-n">{N:,}</strong>
+        {bi('respondientes', 'respondents')}
+    </div>
+    {sidebar_html}
+    <div class="filter-actions">
+        <button class="btn-apply" onclick="applyFilters()">{bi('Aplicar', 'Apply')}</button>
+        <button class="btn-clear" onclick="clearFilters()">{bi('Limpiar', 'Clear')}</button>
+    </div>
+</aside>
 
 <main class="main-content">
 
@@ -841,8 +1124,8 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
         <h2>{bi('Resumen Ejecutivo', 'Executive Summary')}</h2>
     </div>
     <p class="chapter-intro">{bi(
-        'Este análisis captura las narrativas de 1,049 colaboradores de ETB sobre su experiencia de transformación organizacional. A través del framework SenseMaker, se identificaron tres perfiles narrativos que revelan diferentes formas de vivir y percibir el cambio dentro de la compañía.',
-        'This analysis captures the narratives of 1,049 ETB employees about their experience of organizational transformation. Through the SenseMaker framework, three narrative profiles were identified that reveal different ways of experiencing and perceiving change within the company.'
+        '<strong>Decisión ejecutiva requerida:</strong> 434 colaboradores (41%) viven la transformación con escepticismo, desconexión y cambio percibido como impuesto. Este informe traduce 1,049 micro-narrativas en indicadores de riesgo accionables y metas de cierre para los próximos 12 meses. La pregunta estratégica: <em>¿Está la organización emocionalmente lista para la transformación, y dónde están las fracturas narrativas que podrían sabotearla?</em>',
+        '<strong>Executive decision required:</strong> 434 employees (41%) experience transformation with skepticism, disconnection, and perceived imposed change. This report translates 1,049 micro-narratives into actionable risk indicators and closure targets for the next 12 months. The strategic question: <em>Is the organization emotionally ready for transformation, and where are the narrative fractures that could sabotage it?</em>'
     )}</p>
 
     <div class="metrics-grid">
@@ -865,17 +1148,20 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
     </div>
 
     <div class="metrics-grid">
-        <div class="metric-card" style="border-top-color: var(--c1);">
+        <div class="metric-card" style="border-top-color: var(--c1);" data-cluster="1">
             <div class="metric-value" style="color: var(--c1);">{SIZES[1]}</div>
-            <div class="metric-label">C1 · {bi(NAMES_ES[1], NAMES_EN[1])} ({PCTS[1]}%)</div>
+            <div class="metric-label">C1 · {bi(NAMES_ES[1], NAMES_EN[1])} ({PCTS[1]}%) <span class="delta-container"></span></div>
+            <span class="urgency urgency-critical">{bi('🔴 Actuar ahora', '🔴 Act now')}</span>
         </div>
-        <div class="metric-card" style="border-top-color: var(--c2);">
+        <div class="metric-card" style="border-top-color: var(--c2);" data-cluster="2">
             <div class="metric-value" style="color: var(--c2);">{SIZES[2]}</div>
-            <div class="metric-label">C2 · {bi(NAMES_ES[2], NAMES_EN[2])} ({PCTS[2]}%)</div>
+            <div class="metric-label">C2 · {bi(NAMES_ES[2], NAMES_EN[2])} ({PCTS[2]}%) <span class="delta-container"></span></div>
+            <span class="urgency urgency-ontrack">{bi('🟢 En curso', '🟢 On track')}</span>
         </div>
-        <div class="metric-card" style="border-top-color: var(--c3);">
+        <div class="metric-card" style="border-top-color: var(--c3);" data-cluster="3">
             <div class="metric-value" style="color: var(--c3);">{SIZES[3]}</div>
-            <div class="metric-label">C3 · {bi(NAMES_ES[3], NAMES_EN[3])} ({PCTS[3]}%)</div>
+            <div class="metric-label">C3 · {bi(NAMES_ES[3], NAMES_EN[3])} ({PCTS[3]}%) <span class="delta-container"></span></div>
+            <span class="urgency urgency-watch">{bi('🟡 Potenciar', '🟡 Accelerate')}</span>
         </div>
     </div>
 </section>
@@ -887,8 +1173,8 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
         <h2>{bi('Análisis de Triadas', 'Triad Analysis')}</h2>
     </div>
     <p class="chapter-intro">{bi(
-        'Las triadas SenseMaker capturan la tensión entre tres polos conceptuales. Los respondientes distribuyen su respuesta entre los tres vértices, revelando prioridades y orientaciones narrativas. A continuación se presentan las 9 triadas del instrumento ETB.',
-        'SenseMaker triads capture the tension between three conceptual poles. Respondents distribute their answer among three vertices, revealing narrative priorities and orientations. Below are the 9 triads from the ETB instrument.'
+        '<strong>Priorice aquí:</strong> Las 9 triadas revelan dónde se fractura el compromiso organizacional. La mayor divergencia está en T4 (Sentido de pertenencia): C1 reporta solo 34% en "mi aporte era valorado" vs. 80% en C3. Cada punto porcentual que se cierre en esa brecha equivale a recuperar ~4 personas del escepticismo hacia la construcción activa. <span class="urgency urgency-critical">🔴 Brecha crítica: 45.7 pp en T4_a</span>',
+        '<strong>Prioritize here:</strong> The 9 triads reveal where organizational commitment fractures. The greatest divergence is in T4 (Sense of belonging): C1 reports only 34% in "my contribution was valued" vs. 80% in C3. Every percentage point closed in this gap is equivalent to recovering ~4 people from skepticism toward active building. <span class="urgency urgency-critical">🔴 Critical gap: 45.7 pp in T4_a</span>'
     )}</p>
     {triad_sections}
 
@@ -896,24 +1182,24 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
     <h3 style="margin:2.5rem 0 1rem;">{bi('Síntesis Cognitiva — Triadas', 'Cognitive Synthesis — Triads')}</h3>
     <div class="conclusions-grid">
         <div class="conclusion-card">
-            <h4>{bi('🔍 Lo Evidente', '🔍 The Obvious')}</h4>
+            <h4>{bi('🔍 Lo Evidente — Actúe aquí primero', '🔍 The Obvious — Act here first')}</h4>
             <p>{bi(
-                'T8 (Base de las relaciones) y T4 (Sentido de pertenencia) son las triadas con mayor divergencia entre clusters (rango > 0.45). C3 gravita hacia <em>identidad compartida</em> y <em>sentirse valorado</em>, mientras C1 se distribuye hacia <em>intereses personales</em> e <em>invisibilidad</em>. La fractura narrativa más profunda de ETB está en cómo se vive la pertenencia, no en cómo se percibe el cambio.',
-                'T8 (Relationship basis) and T4 (Sense of belonging) are the triads with the greatest divergence between clusters (range > 0.45). C3 gravitates toward <em>shared identity</em> and <em>feeling valued</em>, while C1 distributes toward <em>personal interests</em> and <em>invisibility</em>. ETB\'s deepest narrative fracture is in how belonging is experienced, not in how change is perceived.'
+                '<strong>Redirija la inversión en pertenencia.</strong> T8 y T4 son las triadas más fracturadas (rango > 0.45): C3 vive identidad compartida y valoración; C1 gravita a intereses personales e invisibilidad. La fractura más profunda de ETB no está en la actitud frente al cambio — está en cómo se vive la pertenencia. <strong>MECANISMO:</strong> Lanzar programa de reconocimiento visible (no monetario) en las áreas con mayor concentración de C1 dentro de 60 días. <span class="urgency urgency-critical">🔴 Brecha: 45.7 pp</span>',
+                '<strong>Redirect belonging investment.</strong> T8 and T4 are the most fractured triads (range > 0.45): C3 lives shared identity and valuation; C1 gravitates to personal interests and invisibility. ETB\'s deepest fracture is not in attitude toward change — it\'s in how belonging is experienced. <strong>MECHANISM:</strong> Launch visible (non-monetary) recognition program in areas with highest C1 concentration within 60 days. <span class="urgency urgency-critical">🔴 Gap: 45.7 pp</span>'
             )}</p>
         </div>
         <div class="conclusion-card" style="border-top-color: #F59E0B;">
-            <h4>{bi('💡 Lo Contra-Evidente', '💡 The Counter-Intuitive')}</h4>
+            <h4>{bi('💡 Lo Contra-Evidente — No confunda síntomas', "💡 The Counter-Intuitive — Don't confuse symptoms")}</h4>
             <p>{bi(
-                'T1 (Actitud ante la situación) revela que C3 — el grupo más comprometido — tiene un 76% en <em>curiosidad y compromiso</em>, pero C1 solo llega al 37%. Lo sorprendente: C1 no es "anti-cambio" — su peso se distribuye entre los tres polos, con una porción significativa en <em>resignarse</em> (35%). No es resistencia activa, es resignación aprendida. C2, supuestamente el grupo "intermedio", muestra el perfil más pragmático: balancea responsabilidad con curiosidad sin extremos.',
-                'T1 (Attitude toward situation) reveals that C3 — the most committed group — has 76% in <em>curiosity and commitment</em>, but C1 only reaches 37%. The surprise: C1 is not "anti-change" — their weight distributes across all three poles, with a significant portion in <em>resignation</em> (35%). This is not active resistance, it is learned helplessness. C2, supposedly the "middle" group, shows the most pragmatic profile: balancing responsibility with curiosity without extremes.'
+                '<strong>No trate a C1 como resistentes al cambio.</strong> T1 revela que C1 no es "anti-cambio": tiene 35% en <em>resignación aprendida</em>, no en oposición activa. La diferencia es estratégica — la resignación se revierte con inclusión, la oposición con argumentos. C2 (36%) es el grupo bisagra: pragmáticos que balancean responsabilidad con curiosidad sin extremos. <strong>MECANISMO:</strong> Involucrar a C2 como puentes narrativos en sesiones de co-diseño con C1. No "convencer" — co-construir.',
+                "<strong>Don't treat C1 as change-resistant.</strong> T1 reveals C1 is not &quot;anti-change&quot;: 35% shows <em>learned helplessness</em>, not active opposition. The difference is strategic — helplessness is reversed with inclusion, opposition with arguments. C2 (36%) is the hinge group: pragmatists balancing responsibility with curiosity without extremes. <strong>MECHANISM:</strong> Involve C2 as narrative bridges in co-design sessions with C1. Don't &quot;convince&quot; — co-build."
             )}</p>
         </div>
         <div class="conclusion-card" style="border-top-color: #EF4444;">
-            <h4>{bi('📊 KPI Narrativo', '📊 Narrative KPI')}</h4>
+            <h4>{bi('📊 KPI Narrativo — Meta 12 meses', '📊 Narrative KPI — 12-month target')}</h4>
             <p>{bi(
-                '<strong>T4_a: "Mi aporte era valorado"</strong> — C1=44%, C3=80%. Rango: 0.457. Es la dimensión donde ETB tiene la mayor distancia interna. Si en 12 meses C1 sube de 44% a 55%, la organización habrá logrado reducir la fractura de pertenencia en un tercio. Meta: cerrar 10 puntos porcentuales de la brecha T4_a entre C1 y C3.',
-                '<strong>T4_a: "My contribution was valued"</strong> — C1=44%, C3=80%. Range: 0.457. This is the dimension where ETB has the greatest internal distance. If in 12 months C1 rises from 44% to 55%, the organization will have reduced the belonging fracture by one third. Target: close 10 percentage points of the T4_a gap between C1 and C3.'
+                '<strong>T4_a: "Mi aporte era valorado"</strong> — C1 = 34%, C3 = 80%. Rango: 45.7 pp. <strong>META:</strong> Subir C1 de 34% a 45% en 12 meses (cerrar 11 pp de la brecha). Cada punto = ~4 personas que migran del escepticismo al pragmatismo. <strong>CÓMO MEDIR:</strong> Segundo pulso SenseMaker en mes 6 y mes 12, foco en T4_a segmentado por cluster. <span class="urgency urgency-critical">🔴 Indicador ancla</span>',
+                '<strong>T4_a: "My contribution was valued"</strong> — C1 = 34%, C3 = 80%. Range: 45.7 pp. <strong>TARGET:</strong> Raise C1 from 34% to 45% in 12 months (close 11 pp of the gap). Each point = ~4 people migrating from skepticism to pragmatism. <strong>HOW TO MEASURE:</strong> Second SenseMaker pulse at month 6 and 12, focus on T4_a segmented by cluster. <span class="urgency urgency-critical">🔴 Anchor indicator</span>'
             )}</p>
         </div>
     </div>
@@ -926,8 +1212,8 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
         <h2>{bi('Análisis de Díadas', 'Dyad Analysis')}</h2>
     </div>
     <p class="chapter-intro">{bi(
-        'Las díadas representan polaridades donde el respondiente se ubica en un continuo entre dos polos opuestos. Valores cercanos a 0 indican afinidad con el polo izquierdo; cercanos a 1, con el derecho.',
-        'Dyads represent polarities where the respondent positions themselves on a continuum between two opposite poles. Values close to 0 indicate affinity with the left pole; close to 1, with the right.'
+        '<strong>Alerte a su comité:</strong> D6 (Conexión percibida) es la díada más fracturada del instrumento — C1 tiene mediana 0.68 (se siente desconectado) mientras C3 está en 0.04 (parte de algo más grande). Rango: 0.64. Esta es la mayor brecha interna de ETB y el predictor más fuerte de desvinculación emocional durante la transformación. Las 6 díadas a continuación revelan dónde actuar. <span class="urgency urgency-critical">🔴 D6: fractura 0.64</span>',
+        "<strong>Alert your committee:</strong> D6 (Perceived connection) is the most fractured dyad — C1 has a median of 0.68 (feels disconnected) while C3 is at 0.04 (part of something bigger). Range: 0.64. This is ETB's largest internal gap and the strongest predictor of emotional disengagement during transformation. The 6 dyads below reveal where to act. <span class=&quot;urgency urgency-critical&quot;>🔴 D6: fracture 0.64</span>"
     )}</p>
     <div class="dyad-grid">
         {dyad_sections}
@@ -937,24 +1223,24 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
     <h3 style="margin:2.5rem 0 1rem;">{bi('Síntesis Cognitiva — Díadas', 'Cognitive Synthesis — Dyads')}</h3>
     <div class="conclusions-grid">
         <div class="conclusion-card">
-            <h4>{bi('🔍 Lo Evidente', '🔍 The Obvious')}</h4>
+            <h4>{bi('🔍 Lo Evidente — Fractura operativa, no emocional', '🔍 The Obvious — Operational fracture, not emotional')}</h4>
             <p>{bi(
-                'D6 (Conexión percibida) es la díada más fracturada de todo el instrumento: C1 tiene una mediana de 0.68 (desconectado) mientras C3 está en 0.04 (parte de algo más grande). Rango: 0.64 — más del doble que cualquier otra díada. D1 (Miedo vs. Inspiración) y D3 (Proteger vs. Innovar) confirman el patrón: C1 vive el cambio con miedo y actitud defensiva, C3 con inspiración y apertura. Los Constructores (C2) se ubican consistentemente entre ambos polos.',
-                'D6 (Perceived connection) is the most fractured dyad in the entire instrument: C1 has a median of 0.68 (disconnected) while C3 is at 0.04 (part of something bigger). Range: 0.64 — more than double any other dyad. D1 (Fear vs. Inspiration) and D3 (Protect vs. Innovate) confirm the pattern: C1 experiences change with fear and defensiveness, C3 with inspiration and openness. The Builders (C2) consistently position themselves between both poles.'
+                '<strong>Redefina el problema:</strong> D6 (Conexión) tiene un rango de 0.64 entre C1 y C3 — más del doble que cualquier otra díada. D1 (Miedo vs. Inspiración) confirma: el 47.5% de C1 reporta miedo al cambio (D1 > 0.6) vs. solo el 5.8% de C3. El patrón no es ambiguo: una misma transformación genera realidades narrativas opuestas. <strong>MECANISMO:</strong> Mapear por área cuáles gerencias tienen >50% de C1 y establecer "circuitos de escucha" diferenciados en los próximos 45 días. <span class="urgency urgency-critical">🔴 47.5% con miedo en C1</span>',
+                '<strong>Redefine the problem:</strong> D6 (Connection) has a range of 0.64 between C1 and C3 — more than double any other dyad. D1 (Fear vs. Inspiration) confirms: 47.5% of C1 reports fear of change (D1 > 0.6) vs. only 5.8% of C3. The pattern is unambiguous: one transformation generates opposite narrative realities. <strong>MECHANISM:</strong> Map by area which management units have >50% C1 and establish differentiated "listening circuits" within 45 days. <span class="urgency urgency-critical">🔴 47.5% with fear in C1</span>'
             )}</p>
         </div>
         <div class="conclusion-card" style="border-top-color: #F59E0B;">
-            <h4>{bi('💡 Lo Contra-Evidente', '💡 The Counter-Intuitive')}</h4>
+            <h4>{bi('💡 Lo Contra-Evidente — La desconexión no es rechazo', '💡 The Counter-Intuitive — Disconnection is not rejection')}</h4>
             <p>{bi(
-                'D5 (Efecto en pertenencia) tiene la mediana general más baja del instrumento (0.12), lo que significa que <em>la mayoría de ETB siente que la transformación ha fortalecido su pertenencia</em>. Incluso C1 tiene una mediana de solo 0.27 — relativamente baja. La paradoja: C1 se siente <strong>desconectado</strong> (D6=0.68) pero <strong>no siente que haya perdido pertenencia</strong> (D5=0.27). La desconexión no es emocional — es operativa. Se sienten fuera del circuito de decisión, no fuera de la empresa.',
-                'D5 (Effect on belonging) has the lowest overall median in the instrument (0.12), meaning <em>most of ETB feels transformation has strengthened their belonging</em>. Even C1 has a median of only 0.27 — relatively low. The paradox: C1 feels <strong>disconnected</strong> (D6=0.68) but <strong>has not lost belonging</strong> (D5=0.27). The disconnection is not emotional — it\'s operational. They feel outside the decision loop, not outside the company.'
+                '<strong>No pierda a este grupo — todavía se sienten parte.</strong> D5 (Pertenencia) = 0.12 mediana global, la más baja del instrumento. Incluso C1 tiene solo 0.27. La paradoja ejecutiva: C1 se siente <strong>desconectado</strong> (D6=0.68) pero <strong>no ha perdido pertenencia</strong> (D5=0.27). Esto significa que la desconexión es <em>operativa</em>, no emocional — están fuera del circuito de decisión, no fuera de la empresa. <strong>MECANISMO:</strong> Crear canales de participación en decisiones de transformación para áreas con alta concentración de C1. La ventana de oportunidad es ahora, mientras la pertenencia sigue intacta. <span class="urgency urgency-watch">🟡 Ventana temporal limitada</span>',
+                "<strong>Don't lose this group — they still feel part of it.</strong> D5 (Belonging) = 0.12 overall median, the lowest in the instrument. Even C1 has only 0.27. The executive paradox: C1 feels <strong>disconnected</strong> (D6=0.68) but <strong>has not lost belonging</strong> (D5=0.27). This means disconnection is <em>operational</em>, not emotional — they're outside the decision loop, not outside the company. <strong>MECHANISM:</strong> Create transformation decision-participation channels for areas with high C1 concentration. The window of opportunity is now, while belonging remains intact. <span class=&quot;urgency urgency-watch&quot;>🟡 Limited time window</span>"
             )}</p>
         </div>
         <div class="conclusion-card" style="border-top-color: #EF4444;">
-            <h4>{bi('📊 KPI Narrativo', '📊 Narrative KPI')}</h4>
+            <h4>{bi('📊 KPI Narrativo — Tablero de control ejecutivo', '📊 Narrative KPI — Executive dashboard')}</h4>
             <p>{bi(
-                '<strong>D6: Conexión percibida</strong> — C1 mediana = 0.68. Este es el número más alarmante del estudio. Más de la mitad de los Escépticos se sienten desconectados de "algo más grande". Meta: reducir la mediana D6 de C1 de 0.68 a 0.45 en 12 meses. Segundo KPI: <strong>D4: Cambio compartido vs. impuesto</strong> — C1 mediana = 0.43, meta = 0.30.',
-                '<strong>D6: Perceived connection</strong> — C1 median = 0.68. This is the most alarming number in the study. Over half of Skeptics feel disconnected from "something bigger." Target: reduce C1\'s D6 median from 0.68 to 0.45 in 12 months. Secondary KPI: <strong>D4: Shared vs. imposed change</strong> — C1 median = 0.43, target = 0.30.'
+                '<strong>D6: Conexión percibida</strong> — C1 mediana = 0.68. Este es el número más alarmante del estudio. El 55% de los Escépticos reportan desconexión (D6 > 0.6) vs. apenas 3% de los Visionarios. <strong>META:</strong> Reducir la mediana D6 de C1 de 0.68 a 0.45 en 12 meses. <strong>KPI secundario:</strong> D4 (Cambio impuesto) — C1 mediana = 0.43, meta = 0.30. <strong>CÓMO MEDIR:</strong> Pulso SenseMaker mes 6 y 12, segmentar D6 y D4 por cluster + área. <span class="urgency urgency-critical">🔴 Indicador de riesgo #1</span>',
+                "<strong>D6: Perceived connection</strong> — C1 median = 0.68. This is the study's most alarming number. 55% of Skeptics report disconnection (D6 > 0.6) vs. only 3% of Visionaries. <strong>TARGET:</strong> Reduce C1's D6 median from 0.68 to 0.45 in 12 months. <strong>Secondary KPI:</strong> D4 (Imposed change) — C1 median = 0.43, target = 0.30. <strong>HOW TO MEASURE:</strong> SenseMaker pulse month 6 and 12, segment D6 and D4 by cluster + area. <span class=&quot;urgency urgency-critical&quot;>🔴 Risk indicator #1</span>"
             )}</p>
         </div>
     </div>
@@ -967,14 +1253,14 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
         <h2>{bi('Análisis de Stones', 'Stone Analysis')}</h2>
     </div>
     <p class="chapter-intro">{bi(
-        'Los Stones son signifiers bidimensionales donde el respondiente posiciona ícones en un tablero de 2 ejes. Cada punto representa el centroide por cluster de cada ítem, revelando cómo los diferentes perfiles narrativos perciben conceptos como seguridad psicológica, identidad y marca.',
-        'Stones are bidimensional signifiers where respondents position icons on a 2-axis board. Each point represents the cluster centroid for each item, revealing how different narrative profiles perceive concepts like psychological safety, identity, and brand.'
+        '<strong>Inversión cultural aquí:</strong> "Ser yo mismo" (S1) es el ítem más bajo en seguridad psicológica para los 3 clusters — posibilidad percibida = 0.36. Si la autenticidad no mejora, la transformación será superficial. En marca (S2), todos los clusters aspiran a una ETB diferente, pero la percepción externa está rezagada. Los Stones revelan dónde la cultura necesita trabajo profundo, no cosmético. <span class="urgency urgency-watch">🟡 Autenticidad = 0.36/1.0</span>',
+        "<strong>Cultural investment here:</strong> &quot;Being myself&quot; (S1) is the lowest item in psychological safety across all 3 clusters — perceived possibility = 0.36. If authenticity doesn't improve, transformation will be superficial. In brand (S2), all clusters aspire to a different ETB, but external perception lags. Stones reveal where culture needs deep, not cosmetic, work. <span class=&quot;urgency urgency-watch&quot;>🟡 Authenticity = 0.36/1.0</span>"
     )}</p>
     <!-- S1: Seguridad Psicológica -->
     <div class="stone-section" style="margin-bottom:2rem;">
         <h3>{bi('S1: Seguridad Psicológica y Valores', 'S1: Psychological Safety & Values')}</h3>
         <p style="font-size:0.8rem;color:var(--gris-texto);margin-bottom:1rem;">
-            {bi('Cada número en el gráfico corresponde a un ítem de la tabla. Los marcadores muestran el centroide por cluster. <strong>X = Posibilidad percibida</strong> (baja → alta) | <strong>Y = Frecuencia vivida</strong> (baja → alta).', 'Each number in the chart corresponds to an item in the table. Markers show the centroid per cluster. <strong>X = Perceived possibility</strong> (low → high) | <strong>Y = Lived frequency</strong> (low → high).')}
+            {bi('Cada número en el gráfico corresponde a un ítem de la tabla. Los marcadores muestran el centroide por cluster. <strong>X = Frecuencia</strong> (Pasa todo el tiempo → Es muy raro) | <strong>Y = Dificultad</strong> (Muy fácil → Imposible). Los cuadrantes reflejan el tablero original del cuestionario.', 'Each number in the chart corresponds to an item in the table. Markers show the centroid per cluster. <strong>X = Frequency</strong> (Happens all the time → Very rare) | <strong>Y = Difficulty</strong> (Very easy → Impossible). Quadrants reflect the original questionnaire board.')}
         </p>
         <div class="stone-layout">
             <div class="chart-container">{s1_chart}</div>
@@ -983,8 +1269,8 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
         <div class="insight-box">
             <div class="insight-label">{bi('HALLAZGO CLAVE', 'KEY FINDING')}</div>
             <p>{bi(
-                '<strong>"Ser yo mismo"</strong> es el ítem con posición más baja en ambos ejes para los 3 clusters — revela que la autenticidad en el trabajo es percibida como la dimensión más difícil de la seguridad psicológica. <strong>"Simplicidad"</strong> y <strong>"Aceptar errores"</strong> aparecen en la zona más alta, sugiriendo que ETB ha normalizado el ensayo-error pero aún no ha logrado crear un espacio donde las personas se sientan libres de ser ellas mismas. C1 (Escépticos) reporta consistentemente valores más altos que C3 (Visionarios) en posibilidad percibida, lo que sugiere que los más comprometidos son también los más exigentes con lo que consideran "posible".',
-                '<strong>"Being myself"</strong> is the item with the lowest position on both axes across all 3 clusters — revealing that workplace authenticity is perceived as the hardest dimension of psychological safety. <strong>"Simplicity"</strong> and <strong>"Accepting mistakes"</strong> appear in the highest zone, suggesting ETB has normalized trial-and-error but has not yet created a space where people feel free to be themselves. C1 (Skeptics) consistently reports higher values than C3 (Visionaries) on perceived possibility, suggesting that the most committed are also the most demanding about what they consider "possible".'
+                '<strong>"Ser yo mismo"</strong> es el ítem más cercano al cuadrante inferior-izquierdo (frecuente + fácil) para los 3 clusters — pero su posición en X (0.36) indica que la autenticidad se percibe como algo relativamente frecuente aunque con dificultad moderada (Y ≈ 0.43). <strong>"Simplicidad"</strong> y <strong>"Aceptar errores"</strong> aparecen más desplazados hacia la zona de baja frecuencia, sugiriendo que ETB ha normalizado el ensayo-error en el discurso pero en la práctica ocurre con menor frecuencia. C1 (Escépticos) reporta consistentemente valores de frecuencia más bajos (X más cercano a 0) que C3 (Visionarios), sugiriendo que los más comprometidos perciben estas conductas como más frecuentes en su entorno.',
+                '<strong>"Being myself"</strong> is the item closest to the bottom-left quadrant (frequent + easy) for all 3 clusters — but its X position (0.36) indicates that authenticity is perceived as relatively frequent though with moderate difficulty (Y ≈ 0.43). <strong>"Simplicity"</strong> and <strong>"Accepting mistakes"</strong> appear more displaced toward the low-frequency zone, suggesting ETB has normalized trial-and-error in discourse but in practice it occurs less frequently. C1 (Skeptics) consistently reports lower frequency values (X closer to 0) than C3 (Visionaries), suggesting that the most committed perceive these behaviors as more frequent in their environment.'
             )}</p>
         </div>
     </div>
@@ -993,7 +1279,7 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
     <div class="stone-section">
         <h3>{bi('S2: Percepción de Marca e Identidad', 'S2: Brand & Identity Perception')}</h3>
         <p style="font-size:0.8rem;color:var(--gris-texto);margin-bottom:1rem;">
-            {bi('Los 4 ítems representan perspectivas de marca. <strong>X = Realidad interna</strong> (baja → alta) | <strong>Y = Aspiración</strong> (baja → alta). El cuadrante superior-derecho indica alta realidad + alta aspiración.', 'The 4 items represent brand perspectives. <strong>X = Internal reality</strong> (low → high) | <strong>Y = Aspiration</strong> (low → high). The upper-right quadrant indicates high reality + high aspiration.')}
+            {bi('Los 4 ítems representan perspectivas de marca. <strong>X = Frecuencia</strong> (Pasa todo el tiempo → Es muy raro) | <strong>Y = Dificultad</strong> (Muy fácil → Imposible). El cuadrante inferior-izquierdo (frecuente + fácil) indica la zona de mayor alineación.', 'The 4 items represent brand perspectives. <strong>X = Frequency</strong> (Happens all the time → Very rare) | <strong>Y = Difficulty</strong> (Very easy → Impossible). The bottom-left quadrant (frequent + easy) indicates the zone of greatest alignment.')}
         </p>
         <div class="stone-layout">
             <div class="chart-container">{s2_chart}</div>
@@ -1002,8 +1288,8 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
         <div class="insight-box">
             <div class="insight-label">{bi('HALLAZGO CLAVE', 'KEY FINDING')}</div>
             <p>{bi(
-                'Existe una <strong>brecha aspiracional clara</strong>: "Como quisiera que fuera ETB" (ítem 4) tiene la Y más alta en los 3 clusters, pero "Percepción del mercado" (ítem 2) tiene la Y más baja — la aspiración interna supera con creces la imagen que perciben del mercado. Los Visionarios (C3) muestran la brecha X más grande entre "Como quisiera" (X=0.60) y "Mi experiencia" (X=0.39), lo que indica que quienes más creen en ETB son también quienes más distancia perciben entre lo vivido y lo soñado. Esta tensión aspiracional es un activo para la transformación si se canaliza correctamente.',
-                'There is a <strong>clear aspirational gap</strong>: "How I wish ETB would be" (item 4) has the highest Y across all 3 clusters, but "Market perception" (item 2) has the lowest Y — internal aspiration far exceeds perceived market image. The Visionaries (C3) show the largest X gap between "How I wish" (X=0.60) and "My experience" (X=0.39), indicating that those who believe most in ETB also perceive the greatest distance between lived reality and their dream. This aspirational tension is an asset for transformation if channeled correctly.'
+                'Existe una <strong>brecha aspiracional clara</strong>: "Como quisiera que fuera ETB" (ítem 4) tiene la Y más alta (mayor dificultad percibida) en los 3 clusters, mientras que "Percepción del mercado" (ítem 2) tiene la Y más baja (percibida como más fácil) — la aspiración interna se percibe como lo más difícil de alcanzar. Los Visionarios (C3) muestran la brecha X más grande entre "Como quisiera" (X=0.60, menos frecuente) y "Mi experiencia" (X=0.39, más frecuente), lo que indica que quienes más creen en ETB son también quienes más distancia perciben entre lo vivido y lo soñado. Esta tensión aspiracional es un activo para la transformación si se canaliza correctamente.',
+                'There is a <strong>clear aspirational gap</strong>: "How I wish ETB would be" (item 4) has the highest Y (greatest perceived difficulty) across all 3 clusters, while "Market perception" (item 2) has the lowest Y (perceived as easier) — internal aspiration is perceived as hardest to achieve. The Visionaries (C3) show the largest X gap between "How I wish" (X=0.60, less frequent) and "My experience" (X=0.39, more frequent), indicating that those who believe most in ETB also perceive the greatest distance between lived reality and their dream. This aspirational tension is an asset for transformation if channeled correctly.'
             )}</p>
         </div>
     </div>
@@ -1012,24 +1298,24 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
     <h3 style="margin:2.5rem 0 1rem;">{bi('Síntesis Cognitiva — Stones', 'Cognitive Synthesis — Stones')}</h3>
     <div class="conclusions-grid">
         <div class="conclusion-card">
-            <h4>{bi('🔍 Lo Evidente', '🔍 The Obvious')}</h4>
+            <h4>{bi('🔍 Lo Evidente — El techo de la seguridad psicológica', '🔍 The Obvious — The ceiling of psychological safety')}</h4>
             <p>{bi(
-                'En S1, <strong>"Ser yo mismo"</strong> es el ítem más bajo en ambos ejes (posibilidad y frecuencia) para los 3 clusters. La autenticidad en el trabajo es la dimensión más difícil de la seguridad psicológica en ETB. En S2, la <strong>brecha aspiracional</strong> es universal: "Cómo quisiera que fuera ETB" tiene la Y más alta (aspiración) en todos los clusters, mientras "Percepción del mercado" tiene la más baja. Todos quieren una ETB diferente a la que perciben externamente.',
-                'In S1, <strong>"Being myself"</strong> is the lowest item on both axes (possibility and frequency) for all 3 clusters. Workplace authenticity is the hardest dimension of psychological safety at ETB. In S2, the <strong>aspirational gap</strong> is universal: "How I wish ETB would be" has the highest Y (aspiration) across all clusters, while "Market perception" has the lowest. Everyone wants an ETB different from what they perceive externally.'
+                '<strong>Priorice autenticidad sobre confianza general.</strong> "Ser yo mismo" (S1) es el ítem más bajo en ambos ejes para los 3 clusters. ETB ha normalizado el ensayo-error (Simplicidad y Aceptar errores están en zona alta), pero no ha logrado crear un espacio donde las personas se sientan libres de ser ellas mismas. En S2, la brecha aspiracional es universal: todos aspiran a una ETB diferente. <strong>MECANISMO:</strong> Talleres de vulnerabilidad estructurada con gerencias medias como primeros modelos, iniciando en 30 días. <span class="urgency urgency-watch">🟡 Autenticidad: el eslabón más débil</span>',
+                "<strong>Prioritize authenticity over general trust.</strong> &quot;Being myself&quot; (S1) is the lowest item on both axes for all 3 clusters. ETB has normalized trial-and-error (Simplicity and Accepting mistakes are in the high zone), but hasn't created a space where people feel free to be themselves. In S2, the aspirational gap is universal: everyone aspires to a different ETB. <strong>MECHANISM:</strong> Structured vulnerability workshops with middle management as first models, starting in 30 days. <span class=&quot;urgency urgency-watch&quot;>🟡 Authenticity: the weakest link</span>"
             )}</p>
         </div>
         <div class="conclusion-card" style="border-top-color: #F59E0B;">
-            <h4>{bi('💡 Lo Contra-Evidente', '💡 The Counter-Intuitive')}</h4>
+            <h4>{bi('💡 Lo Contra-Evidente — Los comprometidos son los más exigentes', '💡 The Counter-Intuitive — The committed are the most demanding')}</h4>
             <p>{bi(
-                'En S1, C1 (Escépticos) reporta valores de <em>posibilidad percibida</em> (eje X) <strong>más altos</strong> que C3 (Visionarios) en varios ítems. Los más comprometidos son los más exigentes con lo que consideran "posible". En S2, C3 muestra la brecha X más grande entre "Como quisiera" (X=0.60) y "Mi experiencia" (X=0.39): quienes más creen en ETB son quienes más distancia perciben entre lo vivido y lo soñado. La aspiración no es ingenua — es informada.',
-                'In S1, C1 (Skeptics) reports <em>perceived possibility</em> (X axis) values <strong>higher</strong> than C3 (Visionaries) on several items. The most committed are the most demanding about what they consider "possible." In S2, C3 shows the largest X gap between "How I wish" (X=0.60) and "My experience" (X=0.39): those who believe most in ETB perceive the greatest distance between lived reality and their dream. Aspiration is not naive — it is informed.'
+                '<strong>No confunda compromiso con conformismo.</strong> En S1, C1 reporta frecuencia (X) más baja que C3 en varios ítems — perciben estas conductas como más frecuentes. Los Visionarios son más exigentes: perciben menor frecuencia de estas conductas. En S2, C3 muestra la brecha X más grande entre "Como quisiera" (0.60, menos frecuente) y "Mi experiencia" (0.39, más frecuente). <strong>Implicación para la junta:</strong> Los aliados de la transformación son también sus críticos más informados. Canalizarlos como "auditores de coherencia" que validen si las intervenciones están cerrando la brecha entre discurso y realidad. <span class="urgency urgency-ontrack">🟢 Activo estratégico</span>',
+                "<strong>Don't confuse commitment with conformism.</strong> In S1, C1 reports lower frequency (X) than C3 on several items — they perceive these behaviors as more frequent. Visionaries are more demanding: they perceive lower frequency of these behaviors. In S2, C3 shows the largest X gap between &quot;How I wish&quot; (0.60, less frequent) and &quot;My experience&quot; (0.39, more frequent). <strong>Board implication:</strong> Transformation allies are also its most informed critics. Channel them as &quot;coherence auditors&quot; who validate whether interventions close the gap between discourse and reality. <span class=&quot;urgency urgency-ontrack&quot;>🟢 Strategic asset</span>"
             )}</p>
         </div>
         <div class="conclusion-card" style="border-top-color: #EF4444;">
-            <h4>{bi('📊 KPI Narrativo', '📊 Narrative KPI')}</h4>
+            <h4>{bi('📊 KPI Narrativo — Indicadores de cultura profunda', '📊 Narrative KPI — Deep culture indicators')}</h4>
             <p>{bi(
-                '<strong>S1 — "Ser yo mismo" (X)</strong>: Posibilidad percibida promedio = 0.36. Meta: 0.50 en 12 meses (+39%). <strong>S2 — Brecha aspiracional</strong>: Distancia promedio entre "Como quisiera" y "Mi experiencia" en eje Y = 0.15. Meta: reducir a 0.08 en 12 meses. Estos dos indicadores miden si las intervenciones de cultura están cerrando la distancia entre lo vivido y lo deseado.',
-                '<strong>S1 — "Being myself" (X)</strong>: Avg perceived possibility = 0.36. Target: 0.50 in 12 months (+39%). <strong>S2 — Aspirational gap</strong>: Average distance between "How I wish" and "My experience" on Y axis = 0.15. Target: reduce to 0.08 in 12 months. These two indicators measure whether culture interventions are closing the gap between lived and desired experience.'
+                '<strong>S1: "Ser yo mismo" (X)</strong> — Frecuencia promedio = 0.36 (cercano a "Pasa todo el tiempo"). <strong>META:</strong> Reducir a 0.25 en 12 meses (más frecuente). Si este indicador no se mueve, ninguna iniciativa de innovación tendrá tracción real. <strong>S2: Brecha aspiracional</strong> — Distancia "Como quisiera" vs. "Mi experiencia" en Y = 0.15. <strong>META:</strong> Reducir a 0.08 en 12 meses. <strong>CÓMO MEDIR:</strong> Pulso SenseMaker trimestral, foco en S1 ítem 1 (X) y S2 distancia Y ítems 4-1. <span class="urgency urgency-watch">🟡 KPIs de cultura profunda</span>',
+                "<strong>S1: &quot;Being myself&quot; (X)</strong> — Avg frequency = 0.36 (close to &quot;Happens all the time&quot;). <strong>TARGET:</strong> Reduce to 0.25 in 12 months (more frequent). If this indicator doesn't move, no innovation initiative will gain real traction. <strong>S2: Aspirational gap</strong> — Distance &quot;How I wish&quot; vs. &quot;My experience&quot; on Y = 0.15. <strong>TARGET:</strong> Reduce to 0.08 in 12 months. <strong>HOW TO MEASURE:</strong> Quarterly SenseMaker pulse, focus on S1 item 1 (X) and S2 distance Y items 4-1. <span class=&quot;urgency urgency-watch&quot;>🟡 Deep culture KPIs</span>"
             )}</p>
         </div>
     </div>
@@ -1077,35 +1363,35 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
         <h2>{bi('Factores de Riesgo', 'Risk Factors')}</h2>
     </div>
     <p class="chapter-intro">{bi(
-        'Esta sección identifica las combinaciones demográficas y señales narrativas que amplifican las percepciones más críticas. Un "factor de riesgo" no implica que el grupo sea problemático — significa que concentra una narrativa que requiere atención diferenciada.',
-        'This section identifies the demographic combinations and narrative signals that amplify the most critical perceptions. A "risk factor" does not imply the group is problematic — it means it concentrates a narrative requiring differentiated attention.'
+        '<strong>Actúe antes de que la señal se convierta en crisis.</strong> Esta sección identifica las combinaciones demográficas y señales narrativas que amplifican las percepciones más críticas. Un "factor de riesgo" no implica que el grupo sea problemático — señala dónde la organización necesita intervenir primero para evitar que la fricción se convierta en fractura.',
+        '<strong>Act before the signal becomes a crisis.</strong> This section identifies the demographic combinations and narrative signals that amplify the most critical perceptions. A "risk factor" does not imply the group is problematic — it signals where the organization needs to intervene first to prevent friction from becoming fracture.'
     )}</p>
 
     <!-- Risk KPIs -->
     <div class="risk-metrics">
         <div class="risk-metric">
-            <div class="risk-val" style="color:var(--c1);">{compound_risk}</div>
-            <div class="risk-label">{bi('Triple amenaza', 'Triple threat')}<br><span style="font-size:0.62rem;">C1 + D4>0.5 + D5>0.4</span></div>
+            <div class="risk-val" id="risk-compound" style="color:var(--c1);">{compound_risk}</div>
+            <div class="risk-label">{bi('Triple amenaza', 'Triple threat')}<br><span style="font-size:0.62rem;">C1 + D4>0.5 + D5>0.4</span><br><span class="urgency urgency-critical">🔴 {bi('Intervenir ya', 'Intervene now')}</span></div>
         </div>
         <div class="risk-metric">
             <div class="risk-val" style="color:#DC2626;">27%</div>
-            <div class="risk-label">{bi('Reportan miedo', 'Report fear')}<br><span style="font-size:0.62rem;">D1 > 0.6</span></div>
+            <div class="risk-label">{bi('Reportan miedo', 'Report fear')}<br><span style="font-size:0.62rem;">D1 > 0.6</span><br><span class="urgency urgency-critical">🔴 {bi('META: <18%', 'TARGET: <18%')}</span></div>
         </div>
         <div class="risk-metric">
             <div class="risk-val" style="color:#DC2626;">21%</div>
-            <div class="risk-label">{bi('Cambio impuesto', 'Imposed change')}<br><span style="font-size:0.62rem;">D4 > 0.6</span></div>
+            <div class="risk-label">{bi('Cambio impuesto', 'Imposed change')}<br><span style="font-size:0.62rem;">D4 > 0.6</span><br><span class="urgency urgency-critical">🔴 {bi('META: <12%', 'TARGET: <12%')}</span></div>
         </div>
         <div class="risk-metric">
             <div class="risk-val" style="color:#DC2626;">19%</div>
-            <div class="risk-label">{bi('Pertenencia debilitada', 'Weakened belonging')}<br><span style="font-size:0.62rem;">D5 > 0.5</span></div>
+            <div class="risk-label">{bi('Pertenencia debilitada', 'Weakened belonging')}<br><span style="font-size:0.62rem;">D5 > 0.5</span><br><span class="urgency urgency-critical">🔴 {bi('META: <10%', 'TARGET: <10%')}</span></div>
         </div>
     </div>
 
     <div class="risk-alert">
-        <div class="risk-alert-label">{bi('ALERTA', 'ALERT')}</div>
+        <div class="risk-alert-label">{bi('DECISIÓN EJECUTIVA REQUERIDA', 'EXECUTIVE DECISION REQUIRED')}</div>
         <p>{bi(
-            f'<strong>{compound_risk} personas ({compound_pct:.0%})</strong> están en la zona de "triple amenaza": pertenecen al cluster Escéptico, perciben el cambio como impuesto, y sienten que su pertenencia se ha debilitado. Este grupo requiere intervención prioritaria — no para "convertirlos", sino para escucharlos. Son el termómetro real de la transformación.',
-            f'<strong>{compound_risk} people ({compound_pct:.0%})</strong> are in the "triple threat" zone: they belong to the Skeptic cluster, perceive change as imposed, and feel their belonging has weakened. This group requires priority intervention — not to "convert" them, but to listen to them. They are the real thermometer of transformation.'
+            f'<strong>{compound_risk} personas ({compound_pct:.0%})</strong> están en la zona de "triple amenaza": pertenecen al cluster Escéptico, perciben el cambio como impuesto, y sienten que su pertenencia se ha debilitado. <strong>ACCIÓN:</strong> Sesión de escucha estructurada con este grupo en los próximos 15 días. No para "convertirlos" — sino para incorporar su perspectiva al diseño de la transformación. Son el termómetro real: si este grupo no se mueve, ninguna iniciativa habrá calado. <strong>META:</strong> Reducir esta cifra a &lt;70 personas en 12 meses.',
+            f"<strong>{compound_risk} people ({compound_pct:.0%})</strong> are in the &quot;triple threat&quot; zone: they belong to the Skeptic cluster, perceive change as imposed, and feel their belonging has weakened. <strong>ACTION:</strong> Structured listening session with this group within 15 days. Not to &quot;convert&quot; them — but to incorporate their perspective into transformation design. They are the real thermometer: if this group doesn't move, no initiative will have taken hold. <strong>TARGET:</strong> Reduce this figure to &lt;70 people in 12 months."
         )}</p>
     </div>
 
@@ -1127,10 +1413,10 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
     </table>
 
     <div class="insight-box" style="margin-top:1.5rem;">
-        <div class="insight-label">{bi('LECTURA CLAVE', 'KEY READING')}</div>
+        <div class="insight-label">{bi('LECTURA PARA LA JUNTA', 'READING FOR THE BOARD')}</div>
         <p>{bi(
-            'La concentración de señales críticas en C1 es dramática: el <strong>55% de los Escépticos</strong> reportan desconexión (D6>0.6) vs. apenas el 3% de los Visionarios. Esta no es una diferencia estadística — es una fractura narrativa. En la misma organización, dos personas pueden vivir realidades completamente opuestas del mismo proceso de cambio.',
-            'The concentration of critical signals in C1 is dramatic: <strong>55% of Skeptics</strong> report disconnection (D6>0.6) vs. only 3% of Visionaries. This is not a statistical difference — it\'s a narrative fracture. In the same organization, two people can experience completely opposite realities of the same change process.'
+            '<strong>Alerte a su comité:</strong> la concentración de señales críticas en C1 es dramática. El <strong>55% de los Escépticos</strong> reportan desconexión (D6>0.6) vs. apenas el 3% de los Visionarios. Esta no es una diferencia estadística — es una fractura narrativa. En la misma organización, dos personas viven realidades completamente opuestas del mismo proceso de cambio. <strong>MECANISMO:</strong> Segmentar toda comunicación de transformación por cluster — un solo mensaje para toda la organización amplificará esta fractura en lugar de cerrarla. <span class="urgency urgency-critical">🔴 Fractura activa</span>',
+            "<strong>Alert your committee:</strong> the concentration of critical signals in C1 is dramatic. <strong>55% of Skeptics</strong> report disconnection (D6>0.6) vs. only 3% of Visionaries. This is not a statistical difference — it's a narrative fracture. In the same organization, two people experience completely opposite realities of the same change process. <strong>MECHANISM:</strong> Segment all transformation communication by cluster — a single message for the entire organization will amplify this fracture instead of closing it. <span class=&quot;urgency urgency-critical&quot;>🔴 Active fracture</span>"
         )}</p>
     </div>
 
@@ -1145,10 +1431,10 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
     </div>
 
     <div class="insight-box" style="margin-top:1.5rem;">
-        <div class="insight-label">{bi('HALLAZGO CLAVE', 'KEY FINDING')}</div>
+        <div class="insight-label">{bi('HALLAZGO PARA ACCIÓN', 'FINDING FOR ACTION')}</div>
         <p>{bi(
-            'Los colaboradores con <strong>más de 30 años de antigüedad</strong> tienen un 22% más de probabilidad de ser Escépticos que el promedio, y reportan los niveles más altos de miedo al cambio (D1=0.46). Paradójicamente, el grupo <strong>entre 11 y 15 años</strong> tiene la menor concentración de C1 (31%) — no son los más nuevos los más optimistas, sino los de carrera media. El cargo <strong>operativo</strong> también amplifica el riesgo (+7% sobre promedio).',
-            'Employees with <strong>over 30 years of seniority</strong> have a 22% higher probability of being Skeptics than average, and report the highest levels of fear of change (D1=0.46). Paradoxically, the <strong>11-15 year</strong> group has the lowest C1 concentration (31%) — the most optimistic are not the newest, but mid-career employees. <strong>Operational</strong> roles also amplify risk (+7% above average).'
+            '<strong>Focalice su intervención:</strong> los colaboradores con <strong>más de 30 años de antigüedad</strong> tienen un 22% más de probabilidad de ser Escépticos que el promedio, y reportan los niveles más altos de miedo al cambio (D1=0.46). Paradójicamente, el grupo <strong>entre 11 y 15 años</strong> tiene la menor concentración de C1 (31%) — no son los más nuevos los más optimistas, sino los de carrera media. <strong>MECANISMO:</strong> Usar al grupo 11-15 años como puente narrativo hacia los más antiguos. Programar sesiones de mentoría inversa donde el conocimiento institucional de los veteranos sea valorado explícitamente mientras se expone la perspectiva de transformación de los de carrera media. El cargo <strong>operativo</strong> amplifica el riesgo (+7% sobre promedio) — cualquier intervención debe incluir formatos adaptados a esta población. <span class="urgency urgency-watch">🟡 Intervención focalizada</span>',
+            "<strong>Focus your intervention:</strong> employees with <strong>over 30 years of seniority</strong> have a 22% higher probability of being Skeptics than average, and report the highest levels of fear of change (D1=0.46). Paradoxically, the <strong>11-15 year</strong> group has the lowest C1 concentration (31%) — the most optimistic are not the newest, but mid-career employees. <strong>MECHANISM:</strong> Use the 11-15 year group as narrative bridge to the most senior. Schedule reverse mentoring sessions where veterans' institutional knowledge is explicitly valued while exposing the transformation perspective of mid-career employees. <strong>Operational</strong> roles amplify risk (+7% above average) — any intervention must include formats adapted to this population. <span class=&quot;urgency urgency-watch&quot;>🟡 Focused intervention</span>"
         )}</p>
     </div>
 </section>
@@ -1161,32 +1447,32 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
     </div>
 
     <p class="chapter-intro">{bi(
-        'El análisis SenseMaker de ETB revela una organización en tensión productiva: la mayoría de sus colaboradores reconoce la necesidad de transformación, pero existen tres formas muy distintas de vivirla. Las recomendaciones que siguen están diseñadas para convertir esta diversidad narrativa en una ventaja estratégica.',
-        'The ETB SenseMaker analysis reveals an organization in productive tension: most employees recognize the need for transformation, but there are three very distinct ways of experiencing it. The recommendations that follow are designed to turn this narrative diversity into a strategic advantage.'
+        '<strong>Convierta las conclusiones en decisiones en los próximos 30 días.</strong> El análisis SenseMaker de ETB revela una organización en tensión productiva: el 77% ya cree en la transformación, pero el 41% que se siente excluido puede sabotearla pasivamente si no se actúa. Las recomendaciones que siguen son mecanismos concretos — cada una incluye META, PLAZO y RESPONSABLE sugerido.',
+        '<strong>Turn these conclusions into decisions within the next 30 days.</strong> The ETB SenseMaker analysis reveals an organization in productive tension: 77% already believe in transformation, but the 41% who feel excluded can passively sabotage it if no action is taken. The recommendations that follow are concrete mechanisms — each includes TARGET, TIMELINE and suggested OWNER.'
     )}</p>
 
     <!-- Lo Evidente / Lo Contra-Intuitivo / KPI -->
     <h3 style="margin-bottom:1rem;">{bi('Síntesis Cognitiva (Cognitive Edge)', 'Cognitive Synthesis (Cognitive Edge)')}</h3>
     <div class="conclusions-grid">
         <div class="conclusion-card">
-            <h4>{bi('🔍 Lo Evidente', '🔍 The Obvious')}</h4>
+            <h4>{bi('🔍 Lo Evidente — El peso del 41%', '🔍 The Obvious — The weight of 41%')}</h4>
             <p>{bi(
-                'El 41% de la organización (C1: Escépticos Prudentes) reporta baja pertenencia, percibe el cambio como impuesto y siente que la empresa prioriza resultados sobre personas. Este grupo usa metáforas de <em>incertidumbre</em> y <em>frustración</em>. Su tamaño exige atención inmediata.',
-                '41% of the organization (C1: Cautious Skeptics) reports low belonging, perceives change as imposed, and feels the company prioritizes results over people. This group uses metaphors of <em>uncertainty</em> and <em>frustration</em>. Their size demands immediate attention.'
+                '<strong>No lance ninguna iniciativa de transformación sin neutralizar primero esta señal.</strong> El 41% de la organización (C1: Escépticos Prudentes, 434 personas) reporta baja pertenencia, percibe el cambio como impuesto y siente que la empresa prioriza resultados sobre personas. Este grupo usa metáforas de <em>incertidumbre</em> y <em>frustración</em>. Su tamaño es demasiado grande para ignorar y demasiado pequeño para considerarlo "resistencia generalizada" — es una fractura focalizable. <strong>MECANISMO:</strong> Sesiones de escucha antes de cualquier lanzamiento. <strong>META:</strong> Reducir C1 a <35% en 12 meses. <span class="urgency urgency-critical">🔴 Prioridad ejecutiva</span>',
+                "<strong>Do not launch any transformation initiative without neutralizing this signal first.</strong> 41% of the organization (C1: Cautious Skeptics, 434 people) reports low belonging, perceives change as imposed, and feels the company prioritizes results over people. This group uses metaphors of <em>uncertainty</em> and <em>frustration</em>. Their size is too large to ignore and too small to be considered &quot;generalized resistance&quot; — it's a focusable fracture. <strong>MECHANISM:</strong> Listening sessions before any launch. <strong>TARGET:</strong> Reduce C1 to <35% in 12 months. <span class=&quot;urgency urgency-critical&quot;>🔴 Executive priority</span>"
             )}</p>
         </div>
         <div class="conclusion-card" style="border-top-color: #F59E0B;">
-            <h4>{bi('💡 Lo Contra-Intuitivo', '💡 The Counter-Intuitive')}</h4>
+            <h4>{bi('💡 Lo Contra-Intuitivo — Los aliados más exigentes', '💡 The Counter-Intuitive — The most demanding allies')}</h4>
             <p>{bi(
-                'Los Visionarios (C3, 23%) — el grupo más comprometido — son también los más exigentes. En seguridad psicológica, reportan valores <em>más bajos</em> que los Escépticos en posibilidad percibida. Y en marca, perciben la mayor brecha entre aspiración y realidad. No son optimistas ingenuos: son idealistas informados que exigen coherencia.',
-                'The Visionaries (C3, 23%) — the most committed group — are also the most demanding. In psychological safety, they report <em>lower</em> values than the Skeptics in perceived possibility. And in brand, they perceive the largest gap between aspiration and reality. They are not naive optimists: they are informed idealists who demand coherence.'
+                '<strong>No confunda compromiso con conformismo — los Visionarios exigen más, no menos.</strong> C3 (23%, 241 personas) es el grupo más comprometido pero también el más demandante. En seguridad psicológica, perciben menor frecuencia de estas conductas que los Escépticos. En marca, perciben la mayor brecha entre aspiración y realidad. No son optimistas ingenuos: son idealistas informados que exigen coherencia. <strong>MECANISMO:</strong> Nombrar a C3 como "auditores de coherencia" formales del proceso de transformación. <strong>META:</strong> Mantener C3 ≥23% y canalizar su exigencia constructivamente. <span class="urgency urgency-ontrack">🟢 Activo estratégico</span>',
+                "<strong>Don't confuse commitment with conformism — Visionaries demand more, not less.</strong> C3 (23%, 241 people) is the most committed group but also the most demanding. In psychological safety, they perceive lower frequency of these behaviors than Skeptics. In brand, they perceive the largest gap between aspiration and reality. They are not naive optimists: they are informed idealists who demand coherence. <strong>MECHANISM:</strong> Appoint C3 as formal &quot;coherence auditors&quot; of the transformation process. <strong>TARGET:</strong> Maintain C3 ≥23% and channel their demands constructively. <span class=&quot;urgency urgency-ontrack&quot;>🟢 Strategic asset</span>"
             )}</p>
         </div>
         <div class="conclusion-card" style="border-top-color: #EF4444;">
-            <h4>{bi('📊 KPI Narrativo', '📊 Narrative KPI')}</h4>
+            <h4>{bi('📊 KPI Narrativo — El ancla de la transformación', '📊 Narrative KPI — The transformation anchor')}</h4>
             <p>{bi(
-                '<strong>"Ser yo mismo"</strong> es el ítem más bajo en seguridad psicológica para todos los clusters. Este indicador debe ser el ancla de cualquier intervención de cultura. Si la autenticidad no mejora, la transformación será superficial. Métricas: X (posibilidad) actual promedio = 0.36, meta sugerida = 0.50 en 12 meses.',
-                '<strong>"Being myself"</strong> is the lowest item in psychological safety across all clusters. This indicator should anchor any culture intervention. If authenticity doesn\'t improve, transformation will be superficial. Metrics: current average X (possibility) = 0.36, suggested target = 0.50 in 12 months.'
+                '<strong>"Ser yo mismo" es el termómetro de toda la transformación.</strong> Es el ítem donde la autenticidad se ubica en la zona de mayor frecuencia pero con dificultad moderada (X=0.36, Y=0.43) para todos los clusters. Si la autenticidad no mejora, la transformación será superficial. <strong>KPI primario:</strong> S1 "Ser yo mismo" frecuencia (X) actual = 0.36 → META: 0.25 (más frecuente) en 12 meses. <strong>KPI secundario:</strong> Brecha aspiracional S2 (Y ítems 4-1) actual = 0.15 → META: 0.08 en 12 meses. <strong>CÓMO MEDIR:</strong> Pulso SenseMaker trimestral. <span class="urgency urgency-watch">🟡 Medir desde mes 1</span>',
+                "<strong>&quot;Being myself&quot; is the thermometer of the entire transformation.</strong> It's the item where authenticity sits in the highest frequency zone but with moderate difficulty (X=0.36, Y=0.43) across all clusters. If authenticity doesn't improve, transformation will be superficial. <strong>Primary KPI:</strong> S1 &quot;Being myself&quot; frequency (X) current = 0.36 → TARGET: 0.25 (more frequent) in 12 months. <strong>Secondary KPI:</strong> S2 aspirational gap (Y items 4-1) current = 0.15 → TARGET: 0.08 in 12 months. <strong>HOW TO MEASURE:</strong> Quarterly SenseMaker pulse. <span class=&quot;urgency urgency-watch&quot;>🟡 Measure from month 1</span>"
             )}</p>
         </div>
     </div>
@@ -1196,66 +1482,66 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
     <div class="reco-grid">
         <div class="reco-card">
             <div class="reco-num">01</div>
-            <h4>{bi('Programa de escucha activa para C1', 'Active listening program for C1')}</h4>
+            <h4>{bi('Escucha antes de lanzar — programa para C1', 'Listen before launching — program for C1')}</h4>
             <p>{bi(
-                'Los Escépticos Prudentes no son resistentes al cambio — son personas que no se sienten escuchadas. Crear espacios de diálogo donde sus preocupaciones (frustración, invisibilidad, intereses personales) sean reconocidas antes de pedir compromiso. Formato: micro-narrativas anónimas quincenales.',
-                'The Cautious Skeptics are not change-resistant — they are people who don\'t feel heard. Create dialogue spaces where their concerns (frustration, invisibility, personal interests) are acknowledged before asking for commitment. Format: biweekly anonymous micro-narratives.'
+                '<strong>DECISIÓN:</strong> No lance ninguna iniciativa de cambio sin un ciclo previo de escucha con los 434 Escépticos Prudentes. No son resistentes al cambio — son personas que no se sienten escuchadas. <strong>MECANISMO:</strong> Micro-narrativas anónimas quincenales + 3 sesiones de escucha estructurada por área. <strong>RESPONSABLE:</strong> VP de Talento Humano. <strong>PLAZO:</strong> Iniciar en 15 días, primer ciclo completo en 60 días. <strong>META:</strong> Que el 60% de C1 reporte "fui escuchado" en la siguiente medición.',
+                "<strong>DECISION:</strong> Do not launch any change initiative without a prior listening cycle with the 434 Cautious Skeptics. They are not change-resistant — they are people who don't feel heard. <strong>MECHANISM:</strong> Biweekly anonymous micro-narratives + 3 structured listening sessions per area. <strong>OWNER:</strong> VP of Human Talent. <strong>TIMELINE:</strong> Start in 15 days, first cycle complete in 60 days. <strong>TARGET:</strong> 60% of C1 reports &quot;I was heard&quot; in the next measurement."
             )}</p>
-            <span class="reco-target" style="background:#FEE2E2;color:#991B1B;">C1 · 434 personas</span>
+            <span class="reco-target" style="background:#FEE2E2;color:#991B1B;">C1 · 434 personas · <span class="urgency urgency-critical" style="margin-left:4px;">🔴 Urgente</span></span>
         </div>
         <div class="reco-card">
             <div class="reco-num">02</div>
-            <h4>{bi('Embajadores de transformación desde C3', 'Transformation ambassadors from C3')}</h4>
+            <h4>{bi('Embajadores formales de transformación desde C3', 'Formal transformation ambassadors from C3')}</h4>
             <p>{bi(
-                'Los Visionarios tienen la mayor identidad compartida (75%) y la máxima pertenencia (80%). Son el semillero natural de agentes de cambio. Pero ojo: su exigencia requiere que les den herramientas reales, no solo discurso. Asignarles roles de mentoría bidireccional con C1.',
-                'The Visionaries have the highest shared identity (75%) and maximum belonging (80%). They are the natural seedbed for change agents. But note: their demands require giving them real tools, not just discourse. Assign them bidirectional mentoring roles with C1.'
+                '<strong>DECISIÓN:</strong> Activar a los 241 Visionarios como agentes de cambio formales. Tienen la mayor identidad compartida (75%) y la máxima pertenencia (80%) — pero su exigencia requiere herramientas reales, no discurso. <strong>MECANISMO:</strong> Programa de mentoría bidireccional C3→C1 (20 pares), con roles de "auditor de coherencia" que validen si las intervenciones cierran la brecha entre discurso y realidad. <strong>RESPONSABLE:</strong> Gerencia de Transformación. <strong>PLAZO:</strong> Selección en 30 días, arranque en 45. <strong>META:</strong> 20 pares activos en 90 días.',
+                '<strong>DECISION:</strong> Activate the 241 Visionaries as formal change agents. They have the highest shared identity (75%) and maximum belonging (80%) — but their demands require real tools, not discourse. <strong>MECHANISM:</strong> Bidirectional C3→C1 mentoring program (20 pairs), with "coherence auditor" roles validating whether interventions close the gap between discourse and reality. <strong>OWNER:</strong> Transformation Management. <strong>TIMELINE:</strong> Selection in 30 days, kickoff in 45. <strong>TARGET:</strong> 20 active pairs in 90 days.'
             )}</p>
-            <span class="reco-target" style="background:#D1FAE5;color:#065F46;">C3 → C1 · Puente narrativo</span>
+            <span class="reco-target" style="background:#D1FAE5;color:#065F46;">C3 → C1 · Puente narrativo · <span class="urgency urgency-ontrack" style="margin-left:4px;">🟢 Activar</span></span>
         </div>
         <div class="reco-card">
             <div class="reco-num">03</div>
             <h4>{bi('Cerrar la brecha aspiracional de marca', 'Close the brand aspirational gap')}</h4>
             <p>{bi(
-                'El S2 (Stones de marca) revela que todos los clusters aspiran a una ETB diferente, pero la percepción del mercado está rezagada. Diseñar campañas internas que conecten las victorias reales de transformación con la narrativa de marca. Los C2 (Constructores) son los mejores amplificadores: ven la empresa como "hogar" y equilibran pragmatismo con esperanza.',
-                'S2 (Brand Stones) reveals that all clusters aspire to a different ETB, but market perception lags behind. Design internal campaigns that connect real transformation victories with the brand narrative. C2 (Builders) are the best amplifiers: they see the company as "home" and balance pragmatism with hope.'
+                '<strong>DECISIÓN:</strong> Alinear la narrativa de marca con la realidad interna. S2 revela que todos los clusters aspiran a una ETB diferente, pero la percepción del mercado se percibe como más fácil de lograr (Y baja) mientras la aspiración interna se siente inalcanzable (Y alta). <strong>MECANISMO:</strong> Campañas internas que conecten victorias reales de transformación con la narrativa de marca. Usar C2 (Constructores, 374 personas) como amplificadores — ven la empresa como "hogar" y equilibran pragmatismo con esperanza. <strong>RESPONSABLE:</strong> Comunicaciones + Marketing Interno. <strong>PLAZO:</strong> Primera campaña en 45 días. <strong>META:</strong> Reducir brecha aspiracional S2 (Y) de 0.15 a 0.08 en 12 meses.',
+                '<strong>DECISION:</strong> Align brand narrative with internal reality. S2 reveals all clusters aspire to a different ETB, but market perception is perceived as easier to achieve (low Y) while internal aspiration feels unreachable (high Y). <strong>MECHANISM:</strong> Internal campaigns connecting real transformation victories with brand narrative. Use C2 (Builders, 374 people) as amplifiers — they see the company as "home" and balance pragmatism with hope. <strong>OWNER:</strong> Communications + Internal Marketing. <strong>TIMELINE:</strong> First campaign in 45 days. <strong>TARGET:</strong> Reduce S2 aspirational gap (Y) from 0.15 to 0.08 in 12 months.'
             )}</p>
-            <span class="reco-target" style="background:#FEF3C7;color:#92400E;">C2 · Amplificadores · Marca</span>
+            <span class="reco-target" style="background:#FEF3C7;color:#92400E;">C2 · Amplificadores · Marca · <span class="urgency urgency-watch" style="margin-left:4px;">🟡 45 días</span></span>
         </div>
         <div class="reco-card">
             <div class="reco-num">04</div>
-            <h4>{bi('Intervención de seguridad psicológica en "Ser yo mismo"', 'Psychological safety intervention on "Being myself"')}</h4>
+            <h4>{bi('Intervención de autenticidad: "Ser yo mismo"', 'Authenticity intervention: "Being myself"')}</h4>
             <p>{bi(
-                'Todos los clusters ubican la autenticidad como el punto más débil. Esto es un riesgo para la innovación (T7: solo C3 prioriza innovación). Programa sugerido: talleres de vulnerabilidad estructurada, liderazgo by example desde gerencias medias, y medición trimestral del KPI de autenticidad.',
-                'All clusters rank authenticity as the weakest point. This is a risk for innovation (T7: only C3 prioritizes innovation). Suggested program: structured vulnerability workshops, leadership by example from middle management, and quarterly measurement of the authenticity KPI.'
+                '<strong>DECISIÓN:</strong> Priorizar la autenticidad sobre cualquier otra dimensión de seguridad psicológica. Todos los clusters ubican "Ser yo mismo" como el ítem con mayor dificultad percibida (Y ≈ 0.43). Sin mejora en autenticidad, la innovación no despegará (T7: solo C3 prioriza innovación). <strong>MECANISMO:</strong> Talleres de vulnerabilidad estructurada, liderazgo by example desde gerencias medias, y medición trimestral del KPI de autenticidad. <strong>RESPONSABLE:</strong> VP de Talento Humano + Gerencias medias. <strong>PLAZO:</strong> Primer taller en 30 días. <strong>META:</strong> S1 "Ser yo mismo" frecuencia (X) de 0.36 → 0.25 (más frecuente) en 12 meses.',
+                "<strong>DECISION:</strong> Prioritize authenticity over any other psychological safety dimension. All clusters rank &quot;Being myself&quot; as the item with highest perceived difficulty (Y ≈ 0.43). Without improvement in authenticity, innovation won't take off (T7: only C3 prioritizes innovation). <strong>MECHANISM:</strong> Structured vulnerability workshops, leadership by example from middle management, and quarterly authenticity KPI measurement. <strong>OWNER:</strong> VP of Human Talent + Middle management. <strong>TIMELINE:</strong> First workshop in 30 days. <strong>TARGET:</strong> S1 &quot;Being myself&quot; frequency (X) from 0.36 → 0.25 (more frequent) in 12 months."
             )}</p>
-            <span class="reco-target" style="background:#EDE9FE;color:#5B21B6;">Transversal · Todos los clusters</span>
+            <span class="reco-target" style="background:#EDE9FE;color:#5B21B6;">Transversal · Todos los clusters · <span class="urgency urgency-critical" style="margin-left:4px;">🔴 KPI ancla</span></span>
         </div>
         <div class="reco-card">
             <div class="reco-num">05</div>
-            <h4>{bi('Re-narrar "el cambio compartido" vs. "el cambio impuesto"', 'Re-narrate "shared change" vs. "imposed change"')}</h4>
+            <h4>{bi('Co-diseñar la narrativa del cambio con C1', 'Co-design the change narrative with C1')}</h4>
             <p>{bi(
-                'D4 (cambio compartido vs. impuesto) es la díada con mayor divergencia entre clusters. C1 percibe el cambio como impuesto (0.48), C3 como compartido (0.12). La narrativa organizacional debe co-construirse con representantes de C1. Sin su voz en el diseño, cualquier iniciativa será percibida como imposición.',
-                'D4 (shared vs. imposed change) is the dyad with the greatest divergence between clusters. C1 perceives change as imposed (0.48), C3 as shared (0.12). The organizational narrative must be co-constructed with C1 representatives. Without their voice in design, any initiative will be perceived as imposition.'
+                '<strong>DECISIÓN:</strong> Re-narrar el cambio como "compartido" en lugar de "impuesto". D4 es la díada con mayor divergencia entre clusters: C1 percibe el cambio como impuesto (mediana 0.48), C3 como compartido (0.12). <strong>MECANISMO:</strong> Comité narrativo con 10 representantes de C1 que co-diseñen los mensajes de cada fase de transformación. Sin su voz en el diseño, cualquier iniciativa será percibida como imposición. <strong>RESPONSABLE:</strong> Gerencia de Transformación + Comunicaciones. <strong>PLAZO:</strong> Constituir comité en 20 días. <strong>META:</strong> Mediana D4 de C1 de 0.48 → 0.35 en 12 meses.',
+                '<strong>DECISION:</strong> Re-narrate change as "shared" instead of "imposed." D4 is the dyad with greatest divergence between clusters: C1 perceives change as imposed (median 0.48), C3 as shared (0.12). <strong>MECHANISM:</strong> Narrative committee with 10 C1 representatives who co-design messaging for each transformation phase. Without their voice in design, any initiative will be perceived as imposition. <strong>OWNER:</strong> Transformation Management + Communications. <strong>TIMELINE:</strong> Constitute committee in 20 days. <strong>TARGET:</strong> C1 D4 median from 0.48 → 0.35 in 12 months.'
             )}</p>
-            <span class="reco-target" style="background:#FEE2E2;color:#991B1B;">C1 · D4 · Co-diseño narrativo</span>
+            <span class="reco-target" style="background:#FEE2E2;color:#991B1B;">C1 · D4 · Co-diseño narrativo · <span class="urgency urgency-critical" style="margin-left:4px;">🔴 20 días</span></span>
         </div>
         <div class="reco-card">
             <div class="reco-num">06</div>
-            <h4>{bi('Monitoreo continuo con SenseMaker', 'Continuous monitoring with SenseMaker')}</h4>
+            <h4>{bi('Pulso SenseMaker trimestral', 'Quarterly SenseMaker pulse')}</h4>
             <p>{bi(
-                'Este análisis es una fotografía. Para medir el impacto de las intervenciones, se recomienda un segundo pulso SenseMaker en 6 meses, con foco en: (a) movimiento de C1 hacia centroides de C2/C3, (b) mejora del KPI de autenticidad, (c) reducción de la brecha aspiracional en S2, (d) cambio en la proporción percibida de "cambio impuesto" en D4.',
-                'This analysis is a snapshot. To measure intervention impact, a second SenseMaker pulse in 6 months is recommended, focusing on: (a) C1 movement toward C2/C3 centroids, (b) authenticity KPI improvement, (c) S2 aspirational gap reduction, (d) shift in perceived "imposed change" proportion in D4.'
+                '<strong>DECISIÓN:</strong> Institucionalizar la medición narrativa como herramienta de gestión, no como ejercicio puntual. Este análisis es una fotografía — sin seguimiento, las intervenciones serán ciegas. <strong>MECANISMO:</strong> Pulso SenseMaker cada 3 meses con versión reducida (15 min), foco en: (a) migración de C1 hacia C2/C3, (b) KPI de autenticidad "Ser yo mismo" (S1 ítem 1, X), (c) brecha aspiracional S2 (Y ítems 4-1), (d) proporción de "cambio impuesto" D4. <strong>RESPONSABLE:</strong> MéTRIK + VP de Talento Humano. <strong>PLAZO:</strong> Primer pulso a los 90 días de implementar recomendaciones 01-05. <strong>META:</strong> Dashboard vivo con tendencias trimestrales.',
+                '<strong>DECISION:</strong> Institutionalize narrative measurement as a management tool, not a one-time exercise. This analysis is a snapshot — without follow-up, interventions will be blind. <strong>MECHANISM:</strong> SenseMaker pulse every 3 months with reduced version (15 min), focusing on: (a) C1 migration toward C2/C3, (b) authenticity KPI "Being myself" (S1 item 1, X), (c) S2 aspirational gap (Y items 4-1), (d) "imposed change" proportion D4. <strong>OWNER:</strong> MéTRIK + VP of Human Talent. <strong>TIMELINE:</strong> First pulse 90 days after implementing recommendations 01-05. <strong>TARGET:</strong> Live dashboard with quarterly trends.'
             )}</p>
-            <span class="reco-target" style="background:#DBEAFE;color:#1E40AF;">Medición · Follow-up · 6 meses</span>
+            <span class="reco-target" style="background:#DBEAFE;color:#1E40AF;">Medición continua · 90 días · <span class="urgency urgency-watch" style="margin-left:4px;">🟡 Institucionalizar</span></span>
         </div>
     </div>
 
     <!-- Final Panel -->
     <div class="final-panel">
-        <h3>{bi('La transformación de ETB no es un problema de voluntad — es un problema de narrativa.', 'ETB\'s transformation is not a problem of will — it\'s a problem of narrative.')}</h3>
+        <h3>{bi('La transformación de ETB no es un problema de voluntad — es un problema de narrativa. Y las narrativas se gestionan.', 'ETB\'s transformation is not a problem of will — it\'s a problem of narrative. And narratives can be managed.')}</h3>
         <p>{bi(
-            'El 77% de los colaboradores (C2 + C3) ya cree en el cambio. El reto no es convencer a la mayoría, sino incluir al 41% que se siente invisible. Cuando los Escépticos Prudentes se sientan escuchados, la transformación dejará de ser un proyecto para convertirse en una identidad.',
-            'The 77% of employees (C2 + C3) already believe in change. The challenge is not convincing the majority, but including the 41% who feel invisible. When the Cautious Skeptics feel heard, transformation will stop being a project and become an identity.'
+            'El 77% de los colaboradores (C2 + C3) ya cree en el cambio. El reto no es convencer a la mayoría, sino incluir al 41% que se siente invisible. <strong>La ventana de acción es ahora:</strong> cada mes sin intervención consolida las fracturas narrativas que este informe documenta. Cuando los Escépticos Prudentes se sientan escuchados, la transformación dejará de ser un proyecto para convertirse en una identidad. <strong>Siguiente paso concreto:</strong> Agendar sesión de trabajo con el comité ejecutivo en los próximos 10 días para priorizar las 6 recomendaciones y asignar responsables.',
+            '77% of employees (C2 + C3) already believe in change. The challenge is not convincing the majority, but including the 41% who feel invisible. <strong>The window for action is now:</strong> every month without intervention consolidates the narrative fractures this report documents. When the Cautious Skeptics feel heard, transformation will stop being a project and become an identity. <strong>Concrete next step:</strong> Schedule a working session with the executive committee within the next 10 days to prioritize the 6 recommendations and assign owners.'
         )}</p>
     </div>
 </section>
@@ -1271,6 +1557,13 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
 </footer>
 
 <script>
+// ── Embedded Data ──────────────────────────────────────────────────
+const ETB_YEARS = {embedded_json};
+let currentYear = '2025';
+let ETB_DATA = ETB_YEARS['2025'];
+let filteredIndices = null; // null = all rows
+
+// ── Language Toggle ────────────────────────────────────────────────
 function setLang(lang) {{
     document.documentElement.setAttribute('data-lang', lang);
     document.querySelectorAll('.lang-toggle button').forEach(btn => {{
@@ -1278,10 +1571,346 @@ function setLang(lang) {{
     }});
     try {{ localStorage.setItem('etb_lang', lang); }} catch(e) {{}}
 }}
+
+// ── Sidebar Functions ──────────────────────────────────────────────
+function toggleSidebar() {{
+    var sb = document.getElementById('filterSidebar');
+    var btn = document.querySelector('.filter-btn');
+    sb.classList.toggle('open');
+    document.body.classList.toggle('sidebar-open');
+    if(btn) btn.classList.toggle('active', sb.classList.contains('open'));
+}}
+
+function toggleFilterGroup(field) {{
+    var fg = document.getElementById('fg-' + field);
+    if(fg) fg.classList.toggle('collapsed');
+}}
+
+function getFilterState() {{
+    var state = {{}};
+    var checks = document.querySelectorAll('.filter-sidebar input[type=checkbox]');
+    checks.forEach(function(cb) {{
+        var f = cb.getAttribute('data-field');
+        var v = cb.getAttribute('data-value');
+        if(!state[f]) state[f] = {{}};
+        state[f][v] = cb.checked;
+    }});
+    return state;
+}}
+
+function computeFilteredIndices() {{
+    var state = getFilterState();
+    var data = ETB_DATA;
+    var fields = data.demoFields;
+    var maps = data.demoMaps;
+    var demos = data.demos;
+    var result = [];
+
+    for(var i = 0; i < data.n; i++) {{
+        var pass = true;
+        for(var fi = 0; fi < fields.length; fi++) {{
+            var field = fields[fi];
+            if(!state[field]) continue;
+            var valIdx = demos[i][fi];
+            var valName = (valIdx >= 0 && maps[field]) ? maps[field][valIdx] : null;
+            if(valName !== null && state[field][valName] === false) {{
+                pass = false;
+                break;
+            }}
+        }}
+        if(pass) result.push(i);
+    }}
+    return result;
+}}
+
+function applyFilters() {{
+    filteredIndices = computeFilteredIndices();
+    updateAllVisualizations();
+    updateFilterBadge();
+}}
+
+function clearFilters() {{
+    document.querySelectorAll('.filter-sidebar input[type=checkbox]').forEach(function(cb) {{
+        cb.checked = true;
+    }});
+    filteredIndices = null;
+    updateAllVisualizations();
+    updateFilterBadge();
+}}
+
+function updateFilterBadge() {{
+    var total = document.querySelectorAll('.filter-sidebar input[type=checkbox]').length;
+    var checked = document.querySelectorAll('.filter-sidebar input[type=checkbox]:checked').length;
+    var badge = document.getElementById('filter-badge');
+    var deselected = total - checked;
+    if(badge) {{
+        if(deselected > 0) {{
+            badge.textContent = deselected;
+            badge.style.display = 'inline';
+        }} else {{
+            badge.style.display = 'none';
+        }}
+    }}
+}}
+
+// ── Aggregation Functions ──────────────────────────────────────────
+function getIndices() {{
+    return filteredIndices || Array.from({{length: ETB_DATA.n}}, function(_,i){{return i;}});
+}}
+
+function computeClusterCounts(indices) {{
+    var counts = {{1:0, 2:0, 3:0}};
+    var data = ETB_DATA;
+    for(var i = 0; i < indices.length; i++) {{
+        var cl = data.cluster[indices[i]];
+        counts[cl] = (counts[cl] || 0) + 1;
+    }}
+    var total = indices.length;
+    return {{counts: counts, total: total, pcts: {{
+        1: total > 0 ? (counts[1]/total*100).toFixed(1) : '0.0',
+        2: total > 0 ? (counts[2]/total*100).toFixed(1) : '0.0',
+        3: total > 0 ? (counts[3]/total*100).toFixed(1) : '0.0'
+    }}}};
+}}
+
+function computeTriadMeans(indices, tid) {{
+    var data = ETB_DATA;
+    var cols = data.triadCols;
+    var aIdx = cols.indexOf(tid + '_a');
+    var bIdx = cols.indexOf(tid + '_b');
+    var cIdx = cols.indexOf(tid + '_c');
+    var result = {{}};
+    for(var cl = 1; cl <= 3; cl++) {{
+        var sa = 0, sb = 0, sc = 0, n = 0;
+        for(var i = 0; i < indices.length; i++) {{
+            var ri = indices[i];
+            if(data.cluster[ri] === cl) {{
+                sa += data.triads[ri][aIdx];
+                sb += data.triads[ri][bIdx];
+                sc += data.triads[ri][cIdx];
+                n++;
+            }}
+        }}
+        if(n > 0) {{
+            result[cl] = {{a: sa/n/10000, b: sb/n/10000, c: sc/n/10000, n: n}};
+        }} else {{
+            result[cl] = {{a: 0.333, b: 0.333, c: 0.333, n: 0}};
+        }}
+    }}
+    return result;
+}}
+
+function computeDyadMedians(indices, did) {{
+    var data = ETB_DATA;
+    var dIdx = data.dyadCols.indexOf(did);
+    var result = {{}};
+    var allVals = [];
+    for(var cl = 1; cl <= 3; cl++) {{
+        var vals = [];
+        for(var i = 0; i < indices.length; i++) {{
+            var ri = indices[i];
+            if(data.cluster[ri] === cl) {{
+                vals.push(data.dyads[ri][dIdx] / 10000);
+            }}
+        }}
+        vals.sort(function(a,b){{return a-b;}});
+        var med = vals.length > 0 ? vals[Math.floor(vals.length/2)] : 0;
+        result[cl] = med;
+        allVals = allVals.concat(vals);
+    }}
+    allVals.sort(function(a,b){{return a-b;}});
+    result.overall = allVals.length > 0 ? allVals[Math.floor(allVals.length/2)] : 0;
+    return result;
+}}
+
+function computeStoneMeans(indices, xCol, yCol) {{
+    var data = ETB_DATA;
+    var xIdx = data.stoneCols.indexOf(xCol);
+    var yIdx = data.stoneCols.indexOf(yCol);
+    var result = {{}};
+    for(var cl = 1; cl <= 3; cl++) {{
+        var sx = 0, sy = 0, n = 0;
+        for(var i = 0; i < indices.length; i++) {{
+            var ri = indices[i];
+            if(data.cluster[ri] === cl) {{
+                sx += data.stones[ri][xIdx];
+                sy += data.stones[ri][yIdx];
+                n++;
+            }}
+        }}
+        result[cl] = n > 0 ? {{x: sx/n/10000, y: sy/n/10000, n: n}} : {{x: 0.5, y: 0.5, n: 0}};
+    }}
+    return result;
+}}
+
+// ── Chart Update Functions ─────────────────────────────────────────
+function updateClusterCards() {{
+    var indices = getIndices();
+    var cc = computeClusterCounts(indices);
+    var heroN = document.getElementById('hero-n');
+    if(heroN) heroN.textContent = cc.total.toLocaleString();
+
+    // Update cluster metric cards
+    var clusterCards = document.querySelectorAll('.metric-card[data-cluster]');
+    clusterCards.forEach(function(card) {{
+        var cl = parseInt(card.getAttribute('data-cluster'));
+        var valEl = card.querySelector('.metric-value');
+        var labelEl = card.querySelector('.metric-label');
+        if(valEl) valEl.textContent = cc.counts[cl] || 0;
+    }});
+
+    // Update N in sidebar
+    var sidebarN = document.querySelector('.filter-n strong');
+    if(sidebarN) sidebarN.textContent = cc.total.toLocaleString();
+}}
+
+function updateTernary(tid) {{
+    var indices = getIndices();
+    var means = computeTriadMeans(indices, tid);
+    var divId = 'ternary_' + tid;
+    var div = document.getElementById(divId);
+    if(!div || !div.data) return;
+
+    // Update centroid positions (traces 1, 3, 5 are centroids)
+    var colors = {{1: '#EF4444', 2: '#F59E0B', 3: '#10B981'}};
+    var update = {{}};
+    for(var cl = 1; cl <= 3; cl++) {{
+        var traceIdx = (cl - 1) * 2 + 1; // centroid trace index
+        if(div.data[traceIdx]) {{
+            var m = means[cl];
+            Plotly.restyle(div, {{a: [[m.a]], b: [[m.b]], c: [[m.c]]}}, [traceIdx]);
+        }}
+    }}
+}}
+
+function updateDyad(did) {{
+    var indices = getIndices();
+    var meds = computeDyadMedians(indices, did);
+    // Find dyad card by looking for h4 containing the did
+    var cards = document.querySelectorAll('.dyad-card');
+    cards.forEach(function(card) {{
+        var h4 = card.querySelector('h4');
+        if(!h4 || !h4.textContent.includes(did + ':')) return;
+        var fills = card.querySelectorAll('.dyad-gauge-fill');
+        var vals = card.querySelectorAll('.dyad-gauge-value');
+        for(var cl = 1; cl <= 3; cl++) {{
+            var fi = cl - 1;
+            if(fills[fi]) {{
+                var pct = meds[cl] * 100;
+                fills[fi].style.width = pct.toFixed(1) + '%';
+            }}
+            if(vals[fi]) {{
+                vals[fi].textContent = meds[cl].toFixed(2);
+            }}
+        }}
+        var overall = card.querySelector('.dyad-overall strong');
+        if(overall) overall.textContent = meds.overall.toFixed(2);
+    }});
+}}
+
+function updateAllVisualizations() {{
+    updateClusterCards();
+    // Update ternaries
+    ['T1','T2','T3','T4','T5','T6','T7','T8','T9'].forEach(function(tid) {{
+        updateTernary(tid);
+    }});
+    // Update dyads
+    ['D1','D2','D3','D4','D5','D6'].forEach(function(did) {{
+        updateDyad(did);
+    }});
+    // Update filter counts in sidebar
+    updateFilterCounts();
+}}
+
+function updateFilterCounts() {{
+    var data = ETB_DATA;
+    var indices = getIndices();
+    var fields = data.demoFields;
+    var maps = data.demoMaps;
+    var demos = data.demos;
+
+    // Count per field-value
+    var counts = {{}};
+    for(var i = 0; i < indices.length; i++) {{
+        var ri = indices[i];
+        for(var fi = 0; fi < fields.length; fi++) {{
+            var field = fields[fi];
+            var valIdx = demos[ri][fi];
+            if(valIdx >= 0 && maps[field]) {{
+                var val = maps[field][valIdx];
+                var key = field + '-' + val;
+                counts[key] = (counts[key] || 0) + 1;
+            }}
+        }}
+    }}
+
+    // Update count badges
+    document.querySelectorAll('.fo-count').forEach(function(el) {{
+        var id = el.id; // fc-field-value
+        if(id && id.startsWith('fc-')) {{
+            var parts = id.substring(3);
+            var c = counts[parts] || 0;
+            el.textContent = c;
+        }}
+    }});
+}}
+
+// ── Year Toggle ────────────────────────────────────────────────────
+function setYear(year) {{
+    currentYear = year;
+    ETB_DATA = ETB_YEARS[year];
+    document.querySelectorAll('.year-toggle button').forEach(function(btn) {{
+        btn.classList.toggle('active', btn.textContent.trim() === year);
+    }});
+    // Show deltas if year is 2026
+    document.body.classList.toggle('show-deltas', year === '2026');
+    // Reapply filters with new data
+    if(filteredIndices !== null) {{
+        filteredIndices = computeFilteredIndices();
+    }}
+    updateAllVisualizations();
+    showDeltas();
+    try {{ localStorage.setItem('etb_year', year); }} catch(e) {{}}
+}}
+
+function showDeltas() {{
+    if(currentYear !== '2026') return;
+    // Compute 2025 vs 2026 cluster differences
+    var d25 = ETB_YEARS['2025'];
+    var d26 = ETB_YEARS['2026'];
+    var counts25 = {{1:0,2:0,3:0}};
+    var counts26 = {{1:0,2:0,3:0}};
+    for(var i = 0; i < d25.n; i++) {{
+        counts25[d25.cluster[i]]++;
+        counts26[d26.cluster[i]]++;
+    }}
+    // Update delta indicators on cluster cards
+    var cards = document.querySelectorAll('.metric-card[data-cluster]');
+    cards.forEach(function(card) {{
+        var cl = parseInt(card.getAttribute('data-cluster'));
+        var diff = counts26[cl] - counts25[cl];
+        var deltaEl = card.querySelector('.delta-container');
+        if(deltaEl) {{
+            var arrow = diff > 0 ? '▲' : (diff < 0 ? '▼' : '—');
+            var cls = diff > 0 ? 'delta-up' : (diff < 0 ? 'delta-down' : 'delta-neutral');
+            // For C1, decrease is good (green), increase is bad (red)
+            if(cl === 1) cls = diff < 0 ? 'delta-up' : (diff > 0 ? 'delta-down' : 'delta-neutral');
+            deltaEl.innerHTML = '<span class="delta ' + cls + '">' + arrow + Math.abs(diff) + '</span>';
+        }}
+    }});
+}}
+
+// ── Initialization ─────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {{
-    var saved = null;
-    try {{ saved = localStorage.getItem('etb_lang'); }} catch(e) {{}}
-    if (saved) setLang(saved);
+    // Restore language
+    var savedLang = null;
+    try {{ savedLang = localStorage.getItem('etb_lang'); }} catch(e) {{}}
+    if(savedLang) setLang(savedLang);
+
+    // Restore year
+    var savedYear = null;
+    try {{ savedYear = localStorage.getItem('etb_year'); }} catch(e) {{}}
+    if(savedYear && ETB_YEARS[savedYear]) setYear(savedYear);
 }});
 </script>
 
