@@ -194,19 +194,46 @@ def make_demo_table(col_name, title_es, title_en):
         </table>
     </div>"""
 
-def make_stone_scatter(stone_set, items, x_label_es, y_label_es, x_label_en, y_label_en):
-    """Create a clean scatter plot for stone items per cluster using numbered markers."""
+def make_stone_scatter(stone_set, items, x_label_es, y_label_es, x_label_en, y_label_en,
+                       quadrant_labels=None, quadrant_colors=None):
+    """Create a clean scatter plot for stone items per cluster using numbered markers.
+
+    quadrant_labels: dict with keys 'bl','br','tl','tr' -> bilingual label strings
+    quadrant_colors: dict with keys 'bl','br','tl','tr' -> rgba color strings
+    """
     fig = go.Figure()
 
+    # Default quadrant colors
+    default_colors = {
+        'tl': "rgba(16,185,129,0.04)", 'tr': "rgba(245,158,11,0.04)",
+        'bl': "rgba(107,114,128,0.04)", 'br': "rgba(239,68,68,0.04)"
+    }
+    qc = quadrant_colors if quadrant_colors else default_colors
+
     # Add quadrant shading
-    fig.add_shape(type="rect", x0=0, y0=0.5, x1=0.5, y1=1, fillcolor="rgba(16,185,129,0.04)", line_width=0)
-    fig.add_shape(type="rect", x0=0.5, y0=0.5, x1=1, y1=1, fillcolor="rgba(245,158,11,0.04)", line_width=0)
-    fig.add_shape(type="rect", x0=0, y0=0, x1=0.5, y1=0.5, fillcolor="rgba(107,114,128,0.04)", line_width=0)
-    fig.add_shape(type="rect", x0=0.5, y0=0, x1=1, y1=0.5, fillcolor="rgba(239,68,68,0.04)", line_width=0)
+    fig.add_shape(type="rect", x0=0, y0=0.5, x1=0.5, y1=1, fillcolor=qc['tl'], line_width=0)
+    fig.add_shape(type="rect", x0=0.5, y0=0.5, x1=1, y1=1, fillcolor=qc['tr'], line_width=0)
+    fig.add_shape(type="rect", x0=0, y0=0, x1=0.5, y1=0.5, fillcolor=qc['bl'], line_width=0)
+    fig.add_shape(type="rect", x0=0.5, y0=0, x1=1, y1=0.5, fillcolor=qc['br'], line_width=0)
 
     # Crosshair lines at 0.5
     fig.add_hline(y=0.5, line_dash="dot", line_color="#D1D5DB", line_width=1)
     fig.add_vline(x=0.5, line_dash="dot", line_color="#D1D5DB", line_width=1)
+
+    # Quadrant labels
+    if quadrant_labels:
+        q_positions = [
+            (0.25, 0.25, 'bl'), (0.75, 0.25, 'br'),
+            (0.25, 0.75, 'tl'), (0.75, 0.75, 'tr'),
+        ]
+        for qx, qy, qkey in q_positions:
+            if qkey in quadrant_labels:
+                fig.add_annotation(
+                    x=qx, y=qy, text=quadrant_labels[qkey],
+                    showarrow=False, xanchor='center', yanchor='middle',
+                    font=dict(size=8.5, color='#9CA3AF', family='Montserrat'),
+                    opacity=0.55
+                )
 
     cluster_symbols = {1: 'circle', 2: 'square', 3: 'diamond'}
 
@@ -342,9 +369,22 @@ s1_items = [
     ("Adaptabilidad", "S1_adaptabilidad_X", "S1_adaptabilidad_Y"),
     ("Curiosidad", "S1_curiosidad_X", "S1_curiosidad_Y"),
 ]
+s1_quadrant_labels = {
+    'bl': 'Bloqueado\nBlocked',
+    'br': 'Posible no vivido\nPossible not lived',
+    'tl': 'Vivido sin reconocer\nLived unrecognized',
+    'tr': 'Integrado\nIntegrated'
+}
+s1_quadrant_colors = {
+    'bl': "rgba(107,114,128,0.06)",   # gris — zona de riesgo
+    'br': "rgba(245,158,11,0.06)",    # ámbar — potencial sin activar
+    'tl': "rgba(59,130,246,0.05)",    # azul — informal/subterráneo
+    'tr': "rgba(16,185,129,0.06)"     # verde — zona saludable
+}
 s1_chart = make_stone_scatter("S1", s1_items,
     "Posibilidad percibida", "Frecuencia vivida",
-    "Perceived possibility", "Lived frequency")
+    "Perceived possibility", "Lived frequency",
+    quadrant_labels=s1_quadrant_labels, quadrant_colors=s1_quadrant_colors)
 s1_legend = make_stone_legend_table(s1_items)
 
 # S2: Brand & Identity (4 items)
@@ -354,9 +394,22 @@ s2_items = [
     ("Cómo nos vendemos", "S2_como_nos_vendemos_X", "S2_como_nos_vendemos_Y"),
     ("Como quisiera", "S2_como_quisiera_X", "S2_como_quisiera_Y"),
 ]
+s2_quadrant_labels = {
+    'bl': 'Desconectado\nDisconnected',
+    'br': 'Conformista\nComplacent',
+    'tl': 'Brecha aspiracional\nAspirational gap',
+    'tr': 'Alineado\nAligned'
+}
+s2_quadrant_colors = {
+    'bl': "rgba(107,114,128,0.06)",   # gris — desapego
+    'br': "rgba(245,158,11,0.06)",    # ámbar — statu quo
+    'tl': "rgba(239,68,68,0.05)",     # rojo suave — tensión
+    'tr': "rgba(16,185,129,0.06)"     # verde — coherencia
+}
 s2_chart = make_stone_scatter("S2", s2_items,
     "Realidad interna", "Aspiración",
-    "Internal reality", "Aspiration")
+    "Internal reality", "Aspiration",
+    quadrant_labels=s2_quadrant_labels, quadrant_colors=s2_quadrant_colors)
 s2_legend = make_stone_legend_table(s2_items)
 
 print("[Report] Building cluster profiles...")
