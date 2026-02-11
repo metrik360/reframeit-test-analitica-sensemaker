@@ -190,7 +190,16 @@ print("[Report] Building embedded data for interactive filtering...")
 data_2025 = build_embedded_data(triads, dyads, stones, categorical, assignments['cluster'])
 
 t26, d26, s26, c26, cl26 = generate_synthetic_2026(triads, dyads, stones, categorical, assignments['cluster'])
+# Add cluster column to 2026 DataFrames for component generation
+s26['cluster'] = cl26.values
+d26['cluster'] = cl26.values
+t26['cluster'] = cl26.values
+c26['cluster'] = cl26.values
 data_2026 = build_embedded_data(t26, d26, s26, c26, cl26)
+
+# Build 2026 profiles (triad means per cluster)
+triad_cols_all = [c for c in t26.columns if c.startswith('T') and c != 'cluster']
+profiles_26 = t26.groupby('cluster')[triad_cols_all].mean()
 
 embedded_json = json.dumps({'2025': data_2025, '2026': data_2026}, separators=(',', ':'))
 print(f"  Embedded data size: {len(embedded_json) / 1024:.0f} KB")
@@ -290,6 +299,10 @@ def bi(es, en):
 def yr(text_2025, text_2026):
     """Generate year-toggle spans (mirrors bilingual pattern)."""
     return f'<span class="y25">{text_2025}</span><span class="y26">{text_2026}</span>'
+
+def yr_block(html_2025, html_2026):
+    """Generate year-toggle DIVs for block-level content (charts, tables, profiles)."""
+    return f'<div class="y25">{html_2025}</div><div class="y26">{html_2026}</div>'
 
 def make_ternary(tid):
     """Create a Plotly ternary scatter for a triad."""
@@ -393,12 +406,14 @@ def make_dyad_html(did):
         </div>
     </div>"""
 
-def make_demo_table(col_name, title_es, title_en):
+def make_demo_table(col_name, title_es, title_en, cat_data=None):
     """Create a demographic crosstab HTML table."""
-    if col_name not in categorical.columns:
+    if cat_data is None:
+        cat_data = categorical
+    if col_name not in cat_data.columns:
         return ""
 
-    ct = pd.crosstab(categorical[col_name], categorical['cluster'], normalize='columns') * 100
+    ct = pd.crosstab(cat_data[col_name], cat_data['cluster'], normalize='columns') * 100
     ct = ct.round(1)
 
     rows = ""
@@ -419,14 +434,19 @@ def make_demo_table(col_name, title_es, title_en):
 
 def make_stone_scatter(stone_set, items, x_label_es, y_label_es, x_label_en, y_label_en,
                        quadrant_labels=None, quadrant_colors=None,
-                       x_endpoints=None, y_endpoints=None):
+                       x_endpoints=None, y_endpoints=None,
+                       stone_data=None, div_suffix=''):
     """Create a clean scatter plot for stone items per cluster using numbered markers.
 
     quadrant_labels: dict with keys 'bl','br','tl','tr' -> bilingual label strings
     quadrant_colors: dict with keys 'bl','br','tl','tr' -> rgba color strings
     x_endpoints: tuple (label_at_0, label_at_1) for axis extreme annotations
     y_endpoints: tuple (label_at_0, label_at_1) for axis extreme annotations
+    stone_data: DataFrame to use (default: global `stones`)
+    div_suffix: suffix for div_id to avoid duplicate IDs (e.g. '_26')
     """
+    if stone_data is None:
+        stone_data = stones
     fig = go.Figure()
 
     # Default quadrant colors
@@ -484,15 +504,15 @@ def make_stone_scatter(stone_set, items, x_label_es, y_label_es, x_label_en, y_l
     cluster_symbols = {1: 'circle', 2: 'square', 3: 'diamond'}
 
     for cl in [1, 2, 3]:
-        mask = stones['cluster'] == cl
+        mask = stone_data['cluster'] == cl
         x_vals = []
         y_vals = []
         labels = []
         hovers = []
 
         for i, (item_name, x_col, y_col) in enumerate(items):
-            x_mean = float(stones.loc[mask, x_col].mean())
-            y_mean = float(stones.loc[mask, y_col].mean())
+            x_mean = float(stone_data.loc[mask, x_col].mean())
+            y_mean = float(stone_data.loc[mask, y_col].mean())
             x_vals.append(x_mean)
             y_vals.append(y_mean)
             labels.append(str(i + 1))
@@ -525,18 +545,20 @@ def make_stone_scatter(stone_set, items, x_label_es, y_label_es, x_label_en, y_l
         plot_bgcolor='rgba(255,255,255,1)',
         font=dict(family='Montserrat', size=11)
     )
-    return pio.to_html(fig, include_plotlyjs=False, full_html=False, div_id=f'stone_{stone_set}')
+    return pio.to_html(fig, include_plotlyjs=False, full_html=False, div_id=f'stone_{stone_set}{div_suffix}')
 
-def make_stone_legend_table(items):
+def make_stone_legend_table(items, stone_data=None):
     """Create an HTML legend table for stone numbered markers."""
+    if stone_data is None:
+        stone_data = stones
     rows = ""
     for i, (item_name, x_col, y_col) in enumerate(items):
         # Per-cluster means
         cells = ""
         for cl in [1, 2, 3]:
-            mask = stones['cluster'] == cl
-            xm = float(stones.loc[mask, x_col].mean())
-            ym = float(stones.loc[mask, y_col].mean())
+            mask = stone_data['cluster'] == cl
+            xm = float(stone_data.loc[mask, x_col].mean())
+            ym = float(stone_data.loc[mask, y_col].mean())
             cells += f'<td style="font-size:0.72rem;">{xm:.2f}, {ym:.2f}</td>'
         rows += f'<tr><td><strong>{i+1}</strong></td><td>{item_name}</td>{cells}</tr>'
 
@@ -627,7 +649,7 @@ s1_quadrant_colors = {
     'tl': "rgba(59,130,246,0.05)",   # azul — tensión/esfuerzo
     'tr': "rgba(107,114,128,0.06)"   # gris — zona de riesgo
 }
-s1_chart = make_stone_scatter("S1", s1_items,
+s1_chart_25 = make_stone_scatter("S1", s1_items,
     "Pasa todo el tiempo ← Frecuencia → Es muy raro",
     "Muy fácil ← Dificultad → Imposible",
     "Happens all the time ← Frequency → Very rare",
@@ -635,7 +657,19 @@ s1_chart = make_stone_scatter("S1", s1_items,
     quadrant_labels=s1_quadrant_labels, quadrant_colors=s1_quadrant_colors,
     x_endpoints=("Pasa todo el tiempo", "Es muy raro"),
     y_endpoints=("Muy fácil", "Imposible"))
-s1_legend = make_stone_legend_table(s1_items)
+s1_chart_26 = make_stone_scatter("S1", s1_items,
+    "Pasa todo el tiempo ← Frecuencia → Es muy raro",
+    "Muy fácil ← Dificultad → Imposible",
+    "Happens all the time ← Frequency → Very rare",
+    "Very easy ← Difficulty → Impossible",
+    quadrant_labels=s1_quadrant_labels, quadrant_colors=s1_quadrant_colors,
+    x_endpoints=("Pasa todo el tiempo", "Es muy raro"),
+    y_endpoints=("Muy fácil", "Imposible"),
+    stone_data=s26, div_suffix='_26')
+s1_chart = yr_block(s1_chart_25, s1_chart_26)
+s1_legend_25 = make_stone_legend_table(s1_items)
+s1_legend_26 = make_stone_legend_table(s1_items, stone_data=s26)
+s1_legend = yr_block(s1_legend_25, s1_legend_26)
 
 # S2: Brand & Identity (4 items)
 s2_items = [
@@ -656,7 +690,7 @@ s2_quadrant_colors = {
     'tl': "rgba(239,68,68,0.05)",    # rojo suave — tensión
     'tr': "rgba(107,114,128,0.06)"   # gris — desapego
 }
-s2_chart = make_stone_scatter("S2", s2_items,
+s2_chart_25 = make_stone_scatter("S2", s2_items,
     "Pasa todo el tiempo ← Frecuencia → Es muy raro",
     "Muy fácil ← Dificultad → Imposible",
     "Happens all the time ← Frequency → Very rare",
@@ -664,86 +698,104 @@ s2_chart = make_stone_scatter("S2", s2_items,
     quadrant_labels=s2_quadrant_labels, quadrant_colors=s2_quadrant_colors,
     x_endpoints=("Pasa todo el tiempo", "Es muy raro"),
     y_endpoints=("Muy fácil", "Imposible"))
-s2_legend = make_stone_legend_table(s2_items)
+s2_chart_26 = make_stone_scatter("S2", s2_items,
+    "Pasa todo el tiempo ← Frecuencia → Es muy raro",
+    "Muy fácil ← Dificultad → Imposible",
+    "Happens all the time ← Frequency → Very rare",
+    "Very easy ← Difficulty → Impossible",
+    quadrant_labels=s2_quadrant_labels, quadrant_colors=s2_quadrant_colors,
+    x_endpoints=("Pasa todo el tiempo", "Es muy raro"),
+    y_endpoints=("Muy fácil", "Imposible"),
+    stone_data=s26, div_suffix='_26')
+s2_chart = yr_block(s2_chart_25, s2_chart_26)
+s2_legend_25 = make_stone_legend_table(s2_items)
+s2_legend_26 = make_stone_legend_table(s2_items, stone_data=s26)
+s2_legend = yr_block(s2_legend_25, s2_legend_26)
 
 print("[Report] Building cluster profiles...")
-cluster_profiles_html = ""
-for cl in [1, 2, 3]:
-    # Get text analysis data
-    exp_uni = text_analysis.get("unigrams", {}).get("experiencia", {}).get(f"cluster_{cl}", {})
-    distinctive = exp_uni.get("distinctive", {})
-    top_words = list(distinctive.keys())[:5]
-    top_words_str = ", ".join(top_words) if top_words else "N/A"
 
-    # Get quotes
-    quotes_list = text_analysis.get("quotes", {}).get(str(cl), [])
-    quotes_html = ""
-    for q in quotes_list[:4]:
-        quotes_html += f'<div class="quote-card" style="border-left-color:{COLORS[cl]}"><em>"{q["text"][:300]}"</em></div>'
+def build_profiles_html(prof_data, sizes_dict, pcts_dict):
+    """Build cluster profile HTML using given profile data and sizes."""
+    html = ""
+    for cl in [1, 2, 3]:
+        # Get text analysis data (same for both years — qualitative)
+        exp_uni = text_analysis.get("unigrams", {}).get("experiencia", {}).get(f"cluster_{cl}", {})
+        distinctive = exp_uni.get("distinctive", {})
+        top_words = list(distinctive.keys())[:5]
+        top_words_str = ", ".join(top_words) if top_words else "N/A"
 
-    # Presidente quotes
-    pres_quotes = text_analysis.get("quotes_presidente", {}).get(str(cl), [])
-    pres_html = ""
-    for q in pres_quotes[:2]:
-        pres_html += f'<div class="quote-card" style="border-left-color:{COLORS[cl]}"><em>"{q["text"][:300]}"</em></div>'
+        # Get quotes
+        quotes_list = text_analysis.get("quotes", {}).get(str(cl), [])
+        quotes_html = ""
+        for q in quotes_list[:4]:
+            quotes_html += f'<div class="quote-card" style="border-left-color:{COLORS[cl]}"><em>"{q["text"][:300]}"</em></div>'
 
-    # Metaphors
-    metaphor_html = ""
-    for mf_key in ["cultura_metafora", "trabajo_metafora", "cambio_metafora"]:
-        mf_data = text_analysis.get("metaphor_summary", {}).get(mf_key, {}).get(f"cluster_{cl}", {})
-        top_m = mf_data.get("top_10", [])[:3]
-        if top_m:
-            mf_label = {"cultura_metafora": "Cultura", "trabajo_metafora": "Trabajo", "cambio_metafora": "Cambio"}[mf_key]
-            mf_vals = ", ".join([f'<em>"{m}"</em> ({c})' for m, c in top_m])
-            metaphor_html += f'<div class="metaphor-row"><strong>{mf_label}:</strong> {mf_vals}</div>'
+        # Presidente quotes
+        pres_quotes = text_analysis.get("quotes_presidente", {}).get(str(cl), [])
+        pres_html = ""
+        for q in pres_quotes[:2]:
+            pres_html += f'<div class="quote-card" style="border-left-color:{COLORS[cl]}"><em>"{q["text"][:300]}"</em></div>'
 
-    # Key traits from profiles
-    traits_es = ""
-    key_triads = []
-    for tid in triad_ids:
-        td = label_dict['triads'][tid]
-        a, b, c = f"{tid}_a", f"{tid}_b", f"{tid}_c"
-        vals = [profiles.loc[cl, a], profiles.loc[cl, b], profiles.loc[cl, c]]
-        max_idx = np.argmax(vals)
-        max_val = vals[max_idx]
-        apex_names = [td['es']['apex_a'], td['es']['apex_b'], td['es']['apex_c']]
-        if max_val > 0.5:
-            key_triads.append(f"<li>{tid}: <strong>{apex_names[max_idx]}</strong> ({max_val:.0%})</li>")
-    traits_es = "\n".join(key_triads[:6])
+        # Metaphors
+        metaphor_html = ""
+        for mf_key in ["cultura_metafora", "trabajo_metafora", "cambio_metafora"]:
+            mf_data = text_analysis.get("metaphor_summary", {}).get(mf_key, {}).get(f"cluster_{cl}", {})
+            top_m = mf_data.get("top_10", [])[:3]
+            if top_m:
+                mf_label = {"cultura_metafora": "Cultura", "trabajo_metafora": "Trabajo", "cambio_metafora": "Cambio"}[mf_key]
+                mf_vals = ", ".join([f'<em>"{m}"</em> ({c})' for m, c in top_m])
+                metaphor_html += f'<div class="metaphor-row"><strong>{mf_label}:</strong> {mf_vals}</div>'
 
-    cluster_profiles_html += f"""
-    <div class="cluster-profile" style="border-left: 5px solid {COLORS[cl]}">
-        <div class="cluster-header">
-            <span class="cluster-icon">{ICONS[cl]}</span>
-            <div>
-                <h3 style="color:{COLORS[cl]}">C{cl}: {bi(NAMES_ES[cl], NAMES_EN[cl])}</h3>
-                <div class="cluster-meta">n = {SIZES[cl]} ({PCTS[cl]}%)</div>
+        # Key traits from profiles
+        key_triads = []
+        for tid in triad_ids:
+            td = label_dict['triads'][tid]
+            a, b, c = f"{tid}_a", f"{tid}_b", f"{tid}_c"
+            vals = [prof_data.loc[cl, a], prof_data.loc[cl, b], prof_data.loc[cl, c]]
+            max_idx = np.argmax(vals)
+            max_val = vals[max_idx]
+            apex_names = [td['es']['apex_a'], td['es']['apex_b'], td['es']['apex_c']]
+            if max_val > 0.5:
+                key_triads.append(f"<li>{tid}: <strong>{apex_names[max_idx]}</strong> ({max_val:.0%})</li>")
+        traits_es = "\n".join(key_triads[:6])
+
+        html += f"""
+        <div class="cluster-profile" style="border-left: 5px solid {COLORS[cl]}">
+            <div class="cluster-header">
+                <span class="cluster-icon">{ICONS[cl]}</span>
+                <div>
+                    <h3 style="color:{COLORS[cl]}">C{cl}: {bi(NAMES_ES[cl], NAMES_EN[cl])}</h3>
+                    <div class="cluster-meta">n = {sizes_dict[cl]} ({pcts_dict[cl]}%)</div>
+                </div>
             </div>
-        </div>
-        <div class="cluster-body">
-            <div class="cluster-desc">
-                <h4>{bi('Rasgos dominantes', 'Dominant traits')}</h4>
-                <ul>{traits_es}</ul>
-                <h4>{bi('Vocabulario distintivo', 'Distinctive vocabulary')}</h4>
-                <p class="distinctive-words">{top_words_str}</p>
+            <div class="cluster-body">
+                <div class="cluster-desc">
+                    <h4>{bi('Rasgos dominantes', 'Dominant traits')}</h4>
+                    <ul>{traits_es}</ul>
+                    <h4>{bi('Vocabulario distintivo', 'Distinctive vocabulary')}</h4>
+                    <p class="distinctive-words">{top_words_str}</p>
+                </div>
+                <div class="cluster-metaphors">
+                    <h4>{bi('Metáforas', 'Metaphors')}</h4>
+                    {metaphor_html}
+                </div>
             </div>
-            <div class="cluster-metaphors">
-                <h4>{bi('Metáforas', 'Metaphors')}</h4>
-                {metaphor_html}
+            <div class="cluster-quotes">
+                <h4>{bi('Voces representativas', 'Representative voices')}</h4>
+                {quotes_html}
             </div>
-        </div>
-        <div class="cluster-quotes">
-            <h4>{bi('Voces representativas', 'Representative voices')}</h4>
-            {quotes_html}
-        </div>
-        <div class="cluster-presidente">
-            <h4>{bi('Carta al presidente', 'Letter to the president')}</h4>
-            {pres_html}
-        </div>
-    </div>"""
+            <div class="cluster-presidente">
+                <h4>{bi('Carta al presidente', 'Letter to the president')}</h4>
+                {pres_html}
+            </div>
+        </div>"""
+    return html
+
+profiles_html_25 = build_profiles_html(profiles, SIZES, PCTS)
+profiles_html_26 = build_profiles_html(profiles_26, SIZES_26, PCTS_26)
+cluster_profiles_html = yr_block(profiles_html_25, profiles_html_26)
 
 print("[Report] Building demographics...")
-demo_tables = ""
 demo_cols = {
     "cargo": ("Cargo / Rol", "Role / Position"),
     "antiguedad": ("Antigüedad", "Seniority"),
@@ -751,11 +803,14 @@ demo_cols = {
     "genero": ("Género", "Gender"),
     "educacion": ("Nivel educativo", "Education level"),
 }
+demo_tables_25 = ""
+demo_tables_26 = ""
 for col, (es, en) in demo_cols.items():
-    demo_tables += make_demo_table(col, es, en)
+    demo_tables_25 += make_demo_table(col, es, en)
+    demo_tables_26 += make_demo_table(col, es, en, cat_data=c26)
+demo_tables = yr_block(demo_tables_25, demo_tables_26)
 
 # Likert analysis
-likert_html = ""
 likert_cols = {}
 for lk_id in ["L1", "L2", "L3", "L4"]:
     lk_data = label_dict.get("likert", {}).get(lk_id, {})
@@ -769,115 +824,117 @@ for lk_id in ["L1", "L2", "L3", "L4"]:
         likert_cols[lk_id] = lk_label
     else:
         likert_cols[lk_id] = str(lk_data)[:80] if lk_data else lk_id
+likert_html_25 = ""
+likert_html_26 = ""
 for lk, lk_label in likert_cols.items():
     if lk in categorical.columns:
-        likert_html += make_demo_table(lk, lk_label, lk_label)
+        likert_html_25 += make_demo_table(lk, lk_label, lk_label)
+        likert_html_26 += make_demo_table(lk, lk_label, lk_label, cat_data=c26)
+likert_html = yr_block(likert_html_25, likert_html_26)
 
 # ── Compute Risk Factors ─────────────────────────────────────────────────
 print("[Report] Computing risk factors...")
 
-c1_global_pct = (categorical['cluster'] == 1).mean()
-
-# Risk multipliers by demographic
-risk_rows_html = ""
-risk_data = []
-
-for col, (title_es, title_en) in demo_cols.items():
-    if col not in categorical.columns:
-        continue
-    ct = pd.crosstab(categorical[col], categorical['cluster'], normalize='index')
-    ct_n = pd.crosstab(categorical[col], categorical['cluster']).sum(axis=1)
-    for val in ct.index:
-        n_val = int(ct_n[val])
-        if n_val < 20:
+def build_risk_chart(cat_data, div_suffix=''):
+    """Build a diverging risk bar chart from categorical data with cluster column."""
+    c1_pct_global = (cat_data['cluster'] == 1).mean()
+    r_data = []
+    for col, (title_es, title_en) in demo_cols.items():
+        if col not in cat_data.columns:
             continue
-        c1_pct = float(ct.loc[val, 1]) if 1 in ct.columns else 0
-        risk_ratio = c1_pct / c1_global_pct if c1_global_pct > 0 else 0
-        risk_data.append({
-            'category': col, 'value': val, 'n': n_val,
-            'c1_pct': c1_pct, 'risk_ratio': risk_ratio,
-            'title_es': title_es, 'title_en': title_en
-        })
+        ct = pd.crosstab(cat_data[col], cat_data['cluster'], normalize='index')
+        ct_n = pd.crosstab(cat_data[col], cat_data['cluster']).sum(axis=1)
+        for val in ct.index:
+            n_val = int(ct_n[val])
+            if n_val < 20:
+                continue
+            c1_p = float(ct.loc[val, 1]) if 1 in ct.columns else 0
+            rr = c1_p / c1_pct_global if c1_pct_global > 0 else 0
+            r_data.append({
+                'category': col, 'value': val, 'n': n_val,
+                'c1_pct': c1_p, 'risk_ratio': rr,
+                'title_es': title_es, 'title_en': title_en
+            })
 
-# Sort by risk ratio descending and take top items with RR > 1.1
-risk_data.sort(key=lambda x: x['risk_ratio'], reverse=True)
-high_risk = [r for r in risk_data if r['risk_ratio'] > 1.05][:8]
-low_risk = [r for r in risk_data if r['risk_ratio'] < 0.85][:5]
+    chart_data = sorted(r_data, key=lambda x: x['risk_ratio'])
+    fig_r = go.Figure()
+    for r in chart_data:
+        if r['n'] < 25:
+            continue
+        offset = r['risk_ratio'] - 1.0
+        color = '#EF4444' if offset > 0.1 else ('#F59E0B' if offset > 0 else '#10B981')
+        label = f"{r['value']} ({r['title_es']})"
+        if len(label) > 45:
+            label = label[:42] + "..."
+        fig_r.add_trace(go.Bar(
+            y=[label], x=[offset],
+            orientation='h',
+            marker_color=color,
+            hovertemplate=f"{r['value']}<br>n={r['n']}<br>C1={r['c1_pct']:.1%}<br>RR={r['risk_ratio']:.2f}<extra></extra>",
+            showlegend=False
+        ))
+    fig_r.update_layout(
+        xaxis=dict(title=bi('Ratio de riesgo (vs. promedio)', 'Risk ratio (vs. average)'),
+                  zeroline=True, zerolinecolor='#374151', zerolinewidth=2,
+                  tickformat='+.0%', range=[-0.45, 0.45]),
+        yaxis=dict(autorange=True),
+        height=max(350, len(chart_data) * 28),
+        margin=dict(l=220, r=30, t=20, b=50),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(249,250,251,1)',
+        font=dict(family='Montserrat', size=10)
+    )
+    return pio.to_html(fig_r, include_plotlyjs=False, full_html=False, div_id=f'risk_diverging{div_suffix}')
 
-# Build diverging bar chart for risk
-risk_chart_data = sorted(risk_data, key=lambda x: x['risk_ratio'])
-fig_risk = go.Figure()
-
-for r in risk_chart_data:
-    if r['n'] < 25:
-        continue
-    offset = r['risk_ratio'] - 1.0
-    color = '#EF4444' if offset > 0.1 else ('#F59E0B' if offset > 0 else '#10B981')
-    label = f"{r['value']} ({r['title_es']})"
-    if len(label) > 45:
-        label = label[:42] + "..."
-    fig_risk.add_trace(go.Bar(
-        y=[label], x=[offset],
-        orientation='h',
-        marker_color=color,
-        hovertemplate=f"{r['value']}<br>n={r['n']}<br>C1={r['c1_pct']:.1%}<br>RR={r['risk_ratio']:.2f}<extra></extra>",
-        showlegend=False
-    ))
-
-fig_risk.update_layout(
-    xaxis=dict(title=bi('Ratio de riesgo (vs. promedio)', 'Risk ratio (vs. average)'),
-              zeroline=True, zerolinecolor='#374151', zerolinewidth=2,
-              tickformat='+.0%', range=[-0.45, 0.45]),
-    yaxis=dict(autorange=True),
-    height=max(350, len(risk_chart_data) * 28),
-    margin=dict(l=220, r=30, t=20, b=50),
-    paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(249,250,251,1)',
-    font=dict(family='Montserrat', size=10)
-)
-risk_chart_html = pio.to_html(fig_risk, include_plotlyjs=False, full_html=False, div_id='risk_diverging')
+risk_chart_25 = build_risk_chart(categorical)
+risk_chart_26 = build_risk_chart(c26, div_suffix='_26')
+risk_chart_html = yr_block(risk_chart_25, risk_chart_26)
 
 # Critical dyad thresholds
-critical_thresholds = []
 dyad_thresholds = {'D1': 0.6, 'D4': 0.6, 'D5': 0.5, 'D6': 0.6}
 dyad_labels_es = {'D1': 'Miedo al cambio', 'D4': 'Cambio impuesto', 'D5': 'Pertenencia debilitada', 'D6': 'Desconexión'}
 dyad_labels_en = {'D1': 'Fear of change', 'D4': 'Imposed change', 'D5': 'Weakened belonging', 'D6': 'Disconnection'}
 
-for did, thresh in dyad_thresholds.items():
-    above_total = int((dyads[did] > thresh).sum())
-    pct_total = above_total / N
-    per_cluster = {}
-    for cl in [1, 2, 3]:
-        mask = dyads['cluster'] == cl
-        above_cl = int((dyads.loc[mask, did] > thresh).sum())
-        n_cl = int(mask.sum())
-        per_cluster[cl] = {'above': above_cl, 'n': n_cl, 'pct': above_cl / n_cl if n_cl > 0 else 0}
-    critical_thresholds.append({
-        'did': did, 'thresh': thresh,
-        'label_es': dyad_labels_es[did], 'label_en': dyad_labels_en[did],
-        'total': above_total, 'pct': pct_total,
-        'per_cluster': per_cluster
-    })
+def compute_thresh_rows(dyad_data):
+    """Compute critical threshold table rows for a given dyad DataFrame."""
+    thresholds = []
+    for did, thresh in dyad_thresholds.items():
+        above_total = int((dyad_data[did] > thresh).sum())
+        pct_total = above_total / N
+        per_cluster = {}
+        for cl in [1, 2, 3]:
+            mask = dyad_data['cluster'] == cl
+            above_cl = int((dyad_data.loc[mask, did] > thresh).sum())
+            n_cl = int(mask.sum())
+            per_cluster[cl] = {'above': above_cl, 'n': n_cl, 'pct': above_cl / n_cl if n_cl > 0 else 0}
+        thresholds.append({
+            'did': did, 'thresh': thresh,
+            'label_es': dyad_labels_es[did], 'label_en': dyad_labels_en[did],
+            'total': above_total, 'pct': pct_total,
+            'per_cluster': per_cluster
+        })
+    rows = ""
+    for ct_item in thresholds:
+        cells = ""
+        for cl in [1, 2, 3]:
+            pc = ct_item['per_cluster'][cl]
+            pct_val = pc['pct']
+            bg = f"background:rgba(239,68,68,{min(pct_val*1.5, 0.3):.2f})" if pct_val > 0.2 else ""
+            cells += f'<td style="text-align:center;{bg}"><strong>{pc["above"]}</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">{pct_val:.0%}</span></td>'
+        rows += f"""
+        <tr>
+            <td><strong>{ct_item['did']}</strong></td>
+            <td>{bi(ct_item['label_es'], ct_item['label_en'])}</td>
+            <td style="text-align:center;">> {ct_item['thresh']}</td>
+            <td style="text-align:center;"><strong>{ct_item['total']}</strong> ({ct_item['pct']:.0%})</td>
+            {cells}
+        </tr>"""
+    return rows
 
 # Compound risk (already computed in stats block above)
-
-# Build critical thresholds HTML table
-thresh_rows = ""
-for ct_item in critical_thresholds:
-    cells = ""
-    for cl in [1, 2, 3]:
-        pc = ct_item['per_cluster'][cl]
-        pct_val = pc['pct']
-        bg = f"background:rgba(239,68,68,{min(pct_val*1.5, 0.3):.2f})" if pct_val > 0.2 else ""
-        cells += f'<td style="text-align:center;{bg}"><strong>{pc["above"]}</strong><br><span style="font-size:0.68rem;color:var(--gris-texto);">{pct_val:.0%}</span></td>'
-    thresh_rows += f"""
-    <tr>
-        <td><strong>{ct_item['did']}</strong></td>
-        <td>{bi(ct_item['label_es'], ct_item['label_en'])}</td>
-        <td style="text-align:center;">> {ct_item['thresh']}</td>
-        <td style="text-align:center;"><strong>{ct_item['total']}</strong> ({ct_item['pct']:.0%})</td>
-        {cells}
-    </tr>"""
+thresh_rows_25 = compute_thresh_rows(dyads)
+thresh_rows_26 = compute_thresh_rows(d26)
+thresh_rows = yr_block(thresh_rows_25, thresh_rows_26)
 
 # ── Build Sidebar HTML ───────────────────────────────────────────────────
 print("[Report] Building filter sidebar...")
@@ -1125,9 +1182,10 @@ body {{ font-family: 'Montserrat', -apple-system, sans-serif; background: var(--
 .delta-neutral {{ color: #6B7280; }}
 .delta-container {{ display: none; }}
 body.show-deltas .delta-container {{ display: inline; }}
-.y26 {{ display: none; }}
-body.show-deltas .y25 {{ display: none !important; }}
-body.show-deltas .y26 {{ display: inline; }}
+span.y26, div.y26 {{ display: none; }}
+body.show-deltas span.y25, body.show-deltas div.y25 {{ display: none !important; }}
+body.show-deltas span.y26 {{ display: inline; }}
+body.show-deltas div.y26 {{ display: block; }}
 
 /* Sidebar open state */
 body.sidebar-open .main-content {{ margin-left: 300px; transition: margin-left 0.3s ease; }}
